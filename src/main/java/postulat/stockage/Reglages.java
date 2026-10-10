@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Properties;
 import postulat.ia.Tarif;
+import postulat.production.ReglesGeneration;
 import postulat.suivi.ReglesRelance;
 import postulat.suivi.TableauDeBord;
 
@@ -22,18 +23,29 @@ import postulat.suivi.TableauDeBord;
  * objectif.hebdomadaire = 30
  * modele.economique = claude-haiku-5-5
  * modele.capable = claude-opus-5-5
+ * generation.seuil = 75
+ * generation.poids.ats = 40
+ * generation.revisions = 2
+ * lettre.mots.min = 250
+ * lettre.mots.max = 350
  * </pre>
  */
-public record Reglages(ReglesRelance relance, int objectifHebdomadaire, String modeleEconomique, String modeleCapable) {
+public record Reglages(
+        ReglesRelance relance,
+        int objectifHebdomadaire,
+        String modeleEconomique,
+        String modeleCapable,
+        ReglesGeneration generation) {
 
     public static final String MODELE_ECONOMIQUE = "claude-haiku-5-5";
     public static final String MODELE_CAPABLE = "claude-opus-5-5";
 
-    public static final Reglages PAR_DEFAUT = new Reglages(
-            ReglesRelance.PAR_DEFAUT, TableauDeBord.OBJECTIF_HEBDOMADAIRE, MODELE_ECONOMIQUE, MODELE_CAPABLE);
+    public static final Reglages PAR_DEFAUT = new Reglages(ReglesRelance.PAR_DEFAUT, TableauDeBord.OBJECTIF_HEBDOMADAIRE,
+            MODELE_ECONOMIQUE, MODELE_CAPABLE, ReglesGeneration.PAR_DEFAUT);
 
     public Reglages {
         Objects.requireNonNull(relance);
+        Objects.requireNonNull(generation);
         if (objectifHebdomadaire < 1) {
             throw new IllegalArgumentException("objectif.hebdomadaire doit être d'au moins 1.");
         }
@@ -54,7 +66,13 @@ public record Reglages(ReglesRelance relance, int objectifHebdomadaire, String m
                             entier(p, "relance.nombre", ReglesRelance.PAR_DEFAUT.relancesMax())),
                     entier(p, "objectif.hebdomadaire", TableauDeBord.OBJECTIF_HEBDOMADAIRE),
                     p.getProperty("modele.economique", MODELE_ECONOMIQUE).strip(),
-                    p.getProperty("modele.capable", MODELE_CAPABLE).strip());
+                    p.getProperty("modele.capable", MODELE_CAPABLE).strip(),
+                    new ReglesGeneration(
+                            entier(p, "generation.seuil", ReglesGeneration.PAR_DEFAUT.seuil()),
+                            entier(p, "generation.poids.ats", ReglesGeneration.PAR_DEFAUT.poidsAts()),
+                            entier(p, "generation.revisions", ReglesGeneration.PAR_DEFAUT.revisionsMax()),
+                            entier(p, "lettre.mots.min", ReglesGeneration.PAR_DEFAUT.motsMin()),
+                            entier(p, "lettre.mots.max", ReglesGeneration.PAR_DEFAUT.motsMax())));
         } catch (IOException | IllegalArgumentException e) {
             throw new ErreurStockage("Réglages illisibles dans " + fichier + " : " + e.getMessage(), e);
         }

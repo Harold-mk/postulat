@@ -133,10 +133,14 @@ public final class Rendu {
         c.paragraphe(lettre.lieuEtDate(), c.normale, g.corps(), 0, null);
         c.espace(2 * g.espace());
         c.paragraphe("Objet : " + lettre.objet(), c.grasse, g.corps(), 0, null);
+        c.espace(2 * g.espace());
+        c.paragraphe(Lettre.APPEL, c.normale, g.corps(), 0, null);
         for (Lettre.Paragraphe p : lettre.paragraphes()) {
             c.espace(1.5f * g.espace());
             c.paragraphe(String.join(" ", p.phrases().stream().map(Assertion::texte).toList()), c.normale, g.corps(), 0, null);
         }
+        c.espace(1.5f * g.espace());
+        c.paragraphe(Lettre.FORMULE, c.normale, g.corps(), 0, null);
         c.espace(3 * g.espace());
         c.paragraphe(lettre.expediteur().nom(), c.normale, g.corps(), 0, null);
         return c;

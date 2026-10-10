@@ -5,14 +5,22 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import postulat.ia.Gamme;
+import postulat.production.Assertion;
+import postulat.production.AvisRecruteur;
 import postulat.production.Couverture;
+import postulat.production.Cv;
+import postulat.production.Dossier;
+import postulat.production.Evaluation;
 import postulat.production.Exigence;
+import postulat.production.Lettre;
 import postulat.production.OffreAnalysee;
+import postulat.production.Origine;
 import postulat.production.Rapprochement;
 import postulat.stockage.Offre;
 import postulat.suivi.Canal;
@@ -73,6 +81,80 @@ final class Affichage {
                     + (c.justification().isEmpty() ? "" : " : " + c.justification()));
         }
         out.println("  Adéquation : " + r.note() + "/100. " + r.justification());
+    }
+
+    /**
+     * Le dossier tel qu'on le relit avant de l'envoyer : chaque phrase suivie de son origine (CA-3.7), puis
+     * l'évaluation et le rapport (CA-5.5). Ce qui a été retiré ou écarté est dit, pas tu.
+     */
+    static void dossier(PrintWriter out, Dossier d) {
+        Evaluation e = d.evaluation();
+        out.println("Note globale : " + e.noteGlobale() + "/100, seuil " + e.regles().seuil() + (e.seuilAtteint() ? " atteint" : " non atteint")
+                + " — ATS " + e.ats().map(a -> a.note() + "/100").orElse("sans objet") + " · recruteur " + e.avis().note() + "/100");
+        out.println();
+        out.println("CV");
+        for (Cv.Section s : d.cv().sections()) {
+            out.println("  " + s.titre().toUpperCase(Locale.FRENCH));
+            for (Cv.Contenu c : s.contenus()) {
+                switch (c) {
+                    case Cv.Bloc b -> {
+                        out.println("    " + phrase(b.intitule()));
+                        b.precision().ifPresent(p -> out.println("    " + phrase(p)));
+                        b.puces().forEach(p -> out.println("      • " + phrase(p.assertion()) + " (pertinence " + p.rang() + ")"));
+                    }
+                    case Cv.Ligne l -> out.println("    " + phrase(l.assertion()));
+                }
+            }
+        }
+        out.println();
+        Lettre l = d.lettre();
+        out.println("Lettre — " + l.destinataire() + " · " + l.lieuEtDate() + " · " + l.mots() + " mots");
+        out.println("  Objet : " + l.objet());
+        String[] parties = {"Vous", "Moi", "Nous"};
+        for (int i = 0; i < l.paragraphes().size(); i++) {
+            out.println("  " + (i < parties.length ? parties[i] : "Paragraphe " + (i + 1)));
+            l.paragraphes().get(i).phrases().forEach(p -> out.println("    " + phrase(p)));
+        }
+        out.println();
+        e.ats().ifPresent(a -> {
+            out.println("Filtre ATS : " + a.note() + "/100" + (a.lisible() ? "" : ", texte illisible"));
+            if (!a.presentes().isEmpty()) {
+                out.println("  retrouvées : " + a.presentes().stream().map(x -> marque(x) + " " + x.libelle()).collect(Collectors.joining(", ")));
+            }
+            if (!a.absentes().isEmpty()) {
+                out.println("  absentes : " + a.absentes().stream().map(x -> marque(x) + " " + x.libelle()).collect(Collectors.joining(", ")));
+            }
+        });
+        AvisRecruteur avis = e.avis();
+        out.println("Recruteur : " + avis.note() + "/100");
+        avis.criteres().forEach(n -> out.println("  " + n.critere().libelle() + " " + n.note() + "/5 — " + n.justification()));
+        liste(out, "Forces", avis.forces());
+        liste(out, "Faiblesses", avis.faiblesses());
+        liste(out, "Corrections proposées", avis.corrections());
+        liste(out, "Corrections écartées : elles demandaient un fait absent du profil (RG-07)", d.rapport().correctionsEcartees());
+        out.println();
+        Dossier.Rapport r = d.rapport();
+        out.println("Rapport : " + (r.passes() == 1 ? "une passe" : r.passes() + " passes") + ", " + d.assertions().size()
+                + " phrases dont " + d.assertionsDeLAuteur() + " de votre main");
+        liste(out, "Retirées pour tenir sur une page, les moins pertinentes d'abord (RG-26)",
+                r.retirees().stream().map(p -> p.assertion().texte()).toList());
+        r.avertissements().forEach(a -> out.println("  Attention : " + a));
+    }
+
+    /** « Automatisé le reporting [r-acme-1] », « Votre équipe… [offre] » */
+    static String phrase(Assertion a) {
+        return a.texte() + " " + switch (a.origine()) {
+            case Origine.Faits f -> "[" + String.join(", ", f.ids()) + "]";
+            case Origine.Offre o -> "[offre]";
+            case Origine.Auteur au -> "[de votre main]";
+        };
+    }
+
+    private static void liste(PrintWriter out, String titre, List<String> elements) {
+        if (!elements.isEmpty()) {
+            out.println("  " + titre);
+            elements.forEach(x -> out.println("    - " + x));
+        }
     }
 
     /** UC-06 : la décision revient au candidat ; sans décision, l'offre reste un brouillon (A1). */

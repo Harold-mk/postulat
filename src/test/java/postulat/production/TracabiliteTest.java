@@ -211,4 +211,41 @@ class TracabiliteTest {
             assertThat(regles(v)).containsExactly("RG-04");
         }
     }
+
+    /** Une phrase sur l'entreprise ne dit que ce que l'offre dit (CA-4.3, lacune L-03). */
+    @Nested
+    class OrigineOffre {
+
+        static final String OFFRE = "Acme, 120 salariés, équipe data de 8 personnes, fondée en 2012. SQL exigé.";
+
+        List<Violation> verifierOffre(String texte, List<Exigence> lacunes) {
+            return Tracabilite.verifier(List.of(new Assertion(texte, new Origine.Offre())), PROFIL, lacunes, OFFRE);
+        }
+
+        @Test
+        void une_phrase_fidele_a_l_offre_passe() {
+            assertThat(verifierOffre("Votre équipe data de huit personnes, au sein d'une société de 120 salariés", List.of()))
+                    .isEmpty();
+        }
+
+        @Test
+        void un_nombre_absent_de_l_offre_est_refuse() {
+            List<Violation> v = verifierOffre("Acme compte 300 salariés depuis 2012", List.of());
+
+            assertThat(regles(v)).containsExactly("RG-03");
+            assertThat(v.get(0).message()).contains("« 300 »").contains("texte de l'offre");
+        }
+
+        @Test
+        void une_lacune_ne_s_ecrit_pas_non_plus_au_nom_de_l_offre() {
+            assertThat(regles(verifierOffre("Votre usage de Kubernetes m'attire", lacunes("Kubernetes")))).containsExactly("RG-04");
+        }
+
+        @Test
+        void sans_texte_d_offre_aucun_nombre_n_est_justifie() {
+            List<Violation> v = Tracabilite.verifier(List.of(new Assertion("Une équipe de 8", new Origine.Offre())), PROFIL, List.of());
+
+            assertThat(regles(v)).containsExactly("RG-03");
+        }
+    }
 }

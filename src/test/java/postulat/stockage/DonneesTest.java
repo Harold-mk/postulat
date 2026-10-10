@@ -245,7 +245,8 @@ class DonneesTest {
             Files.writeString(dossier.resolve("postulat.properties"), "relance.delai.jours = 7\nobjectif.hebdomadaire=20\n");
 
             assertThat(donnees().reglages()).isEqualTo(
-                    new Reglages(new ReglesRelance(7, 2), 20, Reglages.MODELE_ECONOMIQUE, Reglages.MODELE_CAPABLE));
+                    new Reglages(new ReglesRelance(7, 2), 20, Reglages.MODELE_ECONOMIQUE, Reglages.MODELE_CAPABLE,
+                            postulat.production.ReglesGeneration.PAR_DEFAUT));
         }
 
         @Test
@@ -258,6 +259,16 @@ class DonneesTest {
                     .isInstanceOf(ErreurStockage.class)
                     .hasMessageContaining("modele.economique")
                     .hasMessageContaining("claude-haiku-5-5");
+        }
+
+        @Test
+        void la_generation_se_regle_seuil_poids_revisions_et_longueur_de_lettre() throws IOException {
+            Files.writeString(dossier.resolve("postulat.properties"), "generation.seuil = 80\ngeneration.poids.ats = 50\n"
+                    + "generation.revisions = 1\nlettre.mots.min = 200\nlettre.mots.max = 300\n");
+            assertThat(donnees().reglages().generation()).isEqualTo(new postulat.production.ReglesGeneration(80, 50, 1, 200, 300));
+
+            Files.writeString(dossier.resolve("postulat.properties"), "lettre.mots.min = 400\n");
+            assertThatThrownBy(() -> donnees().reglages()).isInstanceOf(ErreurStockage.class).hasMessageContaining("400 à 350");
         }
 
         @Test

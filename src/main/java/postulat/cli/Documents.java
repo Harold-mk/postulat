@@ -2,9 +2,7 @@ package postulat.cli;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Optional;
 import picocli.CommandLine.Command;
@@ -20,7 +18,6 @@ import postulat.production.Tracabilite;
 import postulat.production.Violation;
 import postulat.rendu.Rendu;
 import postulat.stockage.Base;
-import postulat.stockage.LectureProfil;
 import postulat.stockage.Numerotee;
 import postulat.stockage.Offre;
 
@@ -52,7 +49,7 @@ final class Documents {
 
         @Override
         public Integer call() throws IOException {
-            Profil profil = profilUtilisable();
+            Profil profil = profilUtilisable().profil().orElseThrow();
             List<Exigence> exigences = exigencesDeLOffre();
             Cv cv = Apercu.de(profil);
             Rendu.Resultat r = Rendu.cv(cv);
@@ -85,18 +82,6 @@ final class Documents {
             return 0;
         }
 
-        private Profil profilUtilisable() {
-            Path fichier = racine().donnees().fichierProfil();
-            if (!Files.exists(fichier)) {
-                throw new Refus("Aucun profil : " + fichier + ". Pour en créer un : postulat profil initialiser");
-            }
-            LectureProfil lecture = racine().donnees().lireProfil(fichier);
-            if (!lecture.estUtilisable()) {
-                throw new Refus("Le profil a " + lecture.problemes().size() + " problème(s) : postulat profil verifier");
-            }
-            return lecture.profil().orElseThrow();
-        }
-
         private List<Exigence> exigencesDeLOffre() {
             if (offre == null) {
                 return List.of();
@@ -110,20 +95,9 @@ final class Documents {
             }
         }
 
-        /** Écrit d'un seul mouvement : un PDF ouvert ailleurs n'est pas laissé à moitié remplacé. */
         private Path ecrire(byte[] pdf) throws IOException {
-            Path cible = sortie != null ? sortie.toAbsolutePath()
-                    : racine().donnees().repertoire().resolve("apercus").resolve("cv-apercu.pdf");
-            Files.createDirectories(cible.getParent());
-            Path provisoire = cible.resolveSibling(cible.getFileName() + ".provisoire");
-            Files.write(provisoire, pdf);
-            try {
-                Files.move(provisoire, cible, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException e) {
-                Files.deleteIfExists(provisoire);
-                throw new Refus("Impossible de remplacer " + cible + " : le PDF est-il ouvert dans un lecteur ? Fermez-le, puis relancez.");
-            }
-            return cible;
+            return ecrirePdf(sortie != null ? sortie.toAbsolutePath()
+                    : racine().donnees().repertoire().resolve("apercus").resolve("cv-apercu.pdf"), pdf);
         }
     }
 }

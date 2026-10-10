@@ -55,6 +55,17 @@ public final class Ats {
     }
 
     /**
+     * Les exigences absentes du texte qu'un fait couvre pourtant : le CV a ce qu'il faut, mais pas les
+     * mots de l'offre. Ce sont les seules qu'une révision peut faire apparaître ; une lacune, elle, ne
+     * s'écrit jamais (RG-04).
+     */
+    public static List<Exigence> aReprendre(NoteAts note, Collection<Exigence> lacunes) {
+        return note.absentes().stream()
+                .filter(e -> lacunes.stream().noneMatch(l -> Mentions.cle(l.libelle()).equals(Mentions.cle(e.libelle()))))
+                .toList();
+    }
+
+    /**
      * Une exigence citée deux fois par l'offre ne compte qu'une fois, et obligatoire si elle l'est
      * au moins une fois : un ATS ne gagne rien à la répétition.
      */

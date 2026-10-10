@@ -18,7 +18,10 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 5 | Modèle de langage : adaptateur Anthropic, coût mesuré et journalisé, double de test | ✅ |
 | 6 | Analyse d'offre, rapprochement avec le profil, note d'adéquation, arbitrage (UC-05, UC-06) | ✅ |
 | 7 | Rendu PDF sur une page, compaction puis retrait des phrases les moins pertinentes, relecture du texte (RG-05, RG-26) | ✅ |
-| 8 | CV ciblé, lettre, évaluation, dossier PDF et DOCX, phrases versées au profil (UC-04), import d'un CV (UC-02) | à venir |
+| 8a | CV ciblé, lettre, évaluation par filtre ATS et recruteur simulé, révision bornée (UC-07) | ✅ |
+| 8b | Correction manuelle du dossier, régénération qui garde les phrases de l'auteur (UC-08) | à venir |
+| 8c | Validation : dossier figé, PDF et DOCX dans le répertoire de la candidature (UC-09) | à venir |
+| 8d | Phrases versées au profil (UC-04), import d'un CV (UC-02) | à venir |
 | 9 | Interface de bureau | à venir |
 
 ## Ce qui fonctionne aujourd'hui
@@ -49,19 +52,21 @@ langage.
 - **Sauvegarde et restauration.** Une archive est complète ou n'existe pas. Une restauration vérifie
   tout avant d'écrire quoi que ce soit, puis sauvegarde l'état qu'elle remplace.
 
-La production de documents a ses fondations, sans modèle de langage pour l'instant :
+La production de documents :
 
 - **Le profil**, seule source de faits, s'écrit en YAML à partir d'un gabarit commenté. Quatre
   sortes de faits — expériences, réalisations, formations, compétences — chacun avec un identifiant
   unique, qu'un dossier cite. La vérification liste d'un coup tout ce qui manque, à la ligne et à la
   colonne près : champ obligatoire vide, « à compléter » oublié, identifiant en double, champ mal
   orthographié, erreur de syntaxe.
-- **La vérification de traçabilité**, qui décidera si un document produit est recevable. Toute
+- **La vérification de traçabilité**, qui décide si un document produit est recevable. Toute
   phrase d'origine « faits » doit citer des faits qui existent (RG-01), ne contenir que des nombres
   présents dans ces faits (RG-03) — « 15 commerciaux » est refusé si le fait dit 12, « une
   vingtaine » aussi — et ne jamais mentionner une exigence de l'offre que le profil ne couvre pas
-  (RG-04). Une phrase écrite par l'auteur n'est jamais rejetée. Des tests adversariaux reproduisent
-  les inventions typiques d'un modèle.
+  (RG-04). Une phrase qui parle de l'entreprise a pour origine l'offre elle-même : ses nombres
+  doivent figurer dans le texte de l'annonce. Une phrase écrite par l'auteur n'est jamais rejetée.
+  Des tests adversariaux reproduisent les inventions typiques d'un modèle. La comparaison est
+  littérale, par prudence : une lacune « Tableau » (le logiciel) fait refuser « tableau de bord ».
 - **La note ATS**, qui simule un filtre de recrutement par mots-clés, sans modèle de langage. Elle
   est délibérément littérale, comme un vrai filtre : une exigence de l'offre compte si son libellé
   figure tel quel dans le texte extrait du document, casse et accents mis à part — « PowerBI » ne
@@ -80,8 +85,20 @@ La production de documents a ses fondations, sans modèle de langage pour l'inst
   en page se compacte, jamais sous 9 points ; s'il déborde encore, le code retire les puces les moins
   pertinentes, dans l'ordre fixé à la génération, et les liste toutes — on ne demande jamais au
   modèle de raccourcir. Puis le PDF est relu comme le ferait un filtre ATS : c'est ce texte-là que la
-  note examine, et une phrase qu'on n'y retrouverait pas est signalée. `cv apercu` rend dès
-  aujourd'hui le CV tiré du profil entier, pour juger la mise en page sur ses propres faits.
+  note examine, et une phrase qu'on n'y retrouverait pas est signalée. `cv apercu` rend le CV tiré
+  du profil entier, pour juger la mise en page sur ses propres faits.
+- **Le dossier ciblé.** Pour une offre poursuivie, `dossier generer N` fait rédiger un CV ciblé et
+  une lettre Vous – Moi – Nous, puis les évalue. Chaque document passe la vérification de
+  traçabilité et ses contraintes : structure, longueur de la lettre, une page. Refusé, il est
+  redemandé une fois avec ses défauts ; refusé encore, la génération échoue et rien n'est
+  enregistré, hormis le journal de ce qu'elle a coûté. Le CV rendu est relu et noté par le filtre
+  ATS ; un recruteur exigeant, simulé, note le dossier sur une grille de cinq critères — adéquation,
+  preuves, ciblage, clarté, langue — et propose des corrections. Celles qui demanderaient d'écrire
+  une lacune sont écartées, et listées. Sous le seuil, une révision repart de cet avis, deux fois au
+  plus ; la meilleure version est gardée, et le rapport dit si le seuil n'a pas été atteint. Le
+  dossier est enregistré phrase par phrase, chacune avec son origine, et avec l'empreinte du profil
+  qui l'a produit : `dossier voir N` le relit et signale un profil modifié depuis. Ses PDF sont des
+  aperçus, rangés dans `apercus/` ; la validation, qui les figera, est l'étape suivante.
 - **Le modèle de langage est branché** derrière une seule interface,
   `Modele`, et son adaptateur vers l'API Anthropic. Le modèle répond dans une forme imposée (sorties
   structurées), la partie stable des demandes — consignes et profil — est mise en cache, et un refus des classifieurs de
@@ -118,6 +135,7 @@ java -jar target/postulat.jar actions
 | `sauvegarder` · `restaurer ARCHIVE` | archive datée ; retour à une archive après vérification |
 | `profil initialiser` · `profil verifier` | écrire le gabarit commenté du profil ; dire ce qui y manque, à la ligne près |
 | `cv apercu [--offre N] [--sortie FICHIER]` | rendre sur une page le CV tiré du profil, le relire, et le noter face à une offre |
+| `dossier generer N` · `dossier voir N [--apercus]` | rédiger, vérifier, évaluer et réviser le CV ciblé et la lettre ; les relire, phrase par phrase et origine comprise |
 | `modele essai [--gamme capable]` · `modele couts` | vérifier la clé d'API par un appel minuscule ; le cumul des coûts, mois par mois |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
@@ -128,9 +146,11 @@ Une offre se donne par un fichier texte : copier l'annonce, la coller dans le Bl
 (UTF-8 par défaut). `offre ajouter -` la lit sur l'entrée standard, mais Windows PowerShell 5.1 y perd
 les accents sauf après `$OutputEncoding = [Text.Encoding]::UTF8` : le fichier est plus sûr.
 
-Les délais de relance, l'objectif hebdomadaire et le modèle de chaque gamme se règlent dans un
-fichier `postulat.properties` placé dans le répertoire des données. Seuls les modèles dont le tarif
-est connu sont acceptés, pour que leur coût reste mesurable :
+Les délais de relance, l'objectif hebdomadaire, le modèle de chaque gamme et la génération se
+règlent dans un fichier `postulat.properties` placé dans le répertoire des données. Seuls les
+modèles dont le tarif est connu sont acceptés, pour que leur coût reste mesurable. La note globale
+d'un dossier pondère la note ATS (`generation.poids.ats`, en pourcentage) et celle du recruteur ;
+sous `generation.seuil`, il est révisé, `generation.revisions` fois au plus :
 
 ```properties
 relance.delai.jours = 10
@@ -138,7 +158,15 @@ relance.nombre = 2
 objectif.hebdomadaire = 30
 modele.economique = claude-haiku-5-5
 modele.capable = claude-opus-5-5
+generation.seuil = 75
+generation.poids.ats = 40
+generation.revisions = 2
+lettre.mots.min = 250
+lettre.mots.max = 350
 ```
+
+Une génération coûte trois appels au modèle capable par passe, une passe et deux révisions au plus,
+plus une reprise par document refusé : le coût exact s'affiche à la fin.
 
 ### Clé d'API
 
@@ -208,7 +236,8 @@ vraie base SQLite, dans un répertoire temporaire.
 Le profil, la base de suivi et les dossiers produits contiennent des données personnelles. Ils ne
 vivent **jamais** dans ce dépôt, mais dans le répertoire utilisateur du système :
 `%LOCALAPPDATA%\postulat` sous Windows, `$XDG_DATA_HOME/postulat` sous Linux. On y trouve
-`profil.yaml`, `postulat.db`, le dossier `sauvegardes/` et, s'il existe, `postulat.properties`. L'option
+`profil.yaml`, `postulat.db`, les dossiers `sauvegardes/` et `apercus/` et, s'il existe,
+`postulat.properties`. L'option
 `--donnees REPERTOIRE` en désigne un autre.
 
 ## Documentation

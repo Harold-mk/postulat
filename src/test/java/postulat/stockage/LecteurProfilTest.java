@@ -92,6 +92,15 @@ class LecteurProfilTest {
         }
 
         @Test
+        void l_empreinte_designe_le_contenu_exact_du_fichier() {
+            String empreinte = lire(COMPLET).empreinte();
+
+            assertThat(empreinte).hasSize(64).matches("[0-9a-f]+");
+            assertThat(lire(COMPLET).empreinte()).isEqualTo(empreinte);
+            assertThat(lire(COMPLET.replace("avancé", "expert")).empreinte()).isNotEqualTo(empreinte);
+        }
+
+        @Test
         void aucune_valeur_n_est_convertie_en_nombre_date_ou_booleen() {
             LectureProfil l = lire(COMPLET.replace("nom: SQL", "nom: Non").replace("2025-01 à 2025-06", "2025-06"));
 

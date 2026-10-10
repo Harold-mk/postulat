@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
@@ -29,6 +30,16 @@ import postulat.ia.RapprochementOffre.RapprochementLu;
 import postulat.ia.ErreurModele;
 import postulat.ia.FauxModele;
 import postulat.ia.Gamme;
+import postulat.ia.GenerationDossier.AvisLu;
+import postulat.ia.GenerationDossier.BlocGenere;
+import postulat.ia.GenerationDossier.CritereLu;
+import postulat.ia.GenerationDossier.CvGenere;
+import postulat.ia.GenerationDossier.LettreGeneree;
+import postulat.ia.GenerationDossier.PhraseGeneree;
+import postulat.ia.GenerationDossier.PhraseLettre;
+import postulat.ia.GenerationDossier.PuceGeneree;
+import postulat.ia.GenerationDossier.SectionGeneree;
+import postulat.production.Critere;
 
 /** Tests de bout en bout : de vraies commandes, une vraie base dans un répertoire temporaire, un jour fixe. */
 class PostulatTest {
@@ -52,6 +63,8 @@ class PostulatTest {
         StringWriter sortie = new StringWriter();
         StringWriter erreurs = new StringWriter();
         CommandLine ligne = Postulat.ligneDeCommande(HORLOGE, new BufferedReader(new StringReader(saisie)), reglages -> faux);
+        // Sans couleurs, quel que soit le terminal qui lance les tests : Git Bash en demanderait.
+        ligne.setColorScheme(CommandLine.Help.defaultColorScheme(CommandLine.Help.Ansi.OFF));
         ligne.setOut(new PrintWriter(sortie, true));
         ligne.setErr(new PrintWriter(erreurs, true));
         String[] tous = Stream.concat(Stream.of("--donnees", dossier.toString()), Stream.of(arguments))
@@ -756,6 +769,153 @@ class PostulatTest {
         @Test
         void sans_sous_commande_l_aide_de_l_offre_s_affiche() {
             assertThat(reussi("offre").sortie()).contains("ajouter").contains("analyser");
+        }
+    }
+
+    /** UC-07 de bout en bout : la génération, ses refus avant tout appel, son échec sans trace, sa relecture. */
+    @Nested
+    class LeDossier {
+
+        /** Ce que println écrit en fin de ligne : CRLF sous Windows. */
+        static final String FIN = System.lineSeparator();
+
+        static CvGenere cv(String puce) {
+            return new CvGenere(List.of(
+                    new SectionGeneree("Expériences", List.of(new BlocGenere(new PhraseGeneree("Stagiaire data analyst — Acme",
+                            List.of("exp-acme")), new PhraseGeneree("2025", List.of("exp-acme")),
+                            List.of(new PuceGeneree(puce, List.of("exp-acme-r1"), 1),
+                                    new PuceGeneree("Mis en place des contrôles SQL quotidiens", List.of("exp-acme-r2"), 2)))), List.of()),
+                    new SectionGeneree("Compétences", List.of(), List.of(new PhraseGeneree("SQL", List.of("comp-sql"))))));
+        }
+
+        static final CvGenere CV = cv("Suivi des ventes sous Power BI");
+
+        static final LettreGeneree LETTRE = new LettreGeneree(
+                List.of(new PhraseLettre("Acme, éditeur lyonnais de logiciels de gestion, cherche un stagiaire data analyst pour six "
+                        + "mois à partir de mars 2027.", "offre", List.of())),
+                List.of(new PhraseLettre("Lors de mon stage chez Acme, j'ai suivi les ventes sous Power BI et mis en place des "
+                        + "contrôles SQL quotidiens.", "faits", List.of("exp-acme-r1", "exp-acme-r2")),
+                        new PhraseLettre("Mon master data à l'Université Lumière complète cette pratique.", "faits",
+                                List.of("form-master"))),
+                List.of(new PhraseLettre("Fiabiliser vos données avec vous serait pour moi une suite naturelle, et j'aimerais en "
+                        + "parler lors d'un entretien.", "faits", List.of("exp-acme-r2"))));
+
+        static AvisLu avis(int note) {
+            return new AvisLu(Arrays.stream(Critere.values()).map(c -> new CritereLu(c.name(), note, "Solide.")).toList(),
+                    List.of("Preuves précises"), List.of(), List.of("Citez Tableau", "Resserrez l'objet"));
+        }
+
+        /** Une offre analysée et rapprochée, poursuivie : la candidature n° 1 attend son dossier. */
+        void candidaturePrete() throws IOException {
+            Files.createDirectories(dossier);
+            Files.writeString(dossier.resolve("profil.yaml"), LeProfil.VALIDE);
+            Files.writeString(dossier.resolve("postulat.properties"), "lettre.mots.min = 50\nlettre.mots.max = 150\n");
+            faux.repondre(LesOffres.FICHE).repondre(LesOffres.RAPPROCHEMENT);
+            reussi("offre", "ajouter", Files.writeString(dossier.resolve("offre-acme.txt"), LesOffres.TEXTE).toString());
+            reussi("avancer", "1", "à_préparer");
+        }
+
+        @Test
+        void le_dossier_genere_est_verifie_evalue_enregistre_et_rendu_en_apercu() throws IOException {
+            candidaturePrete();
+            faux.repondre(CV).repondre(LETTRE).repondre(avis(5));
+
+            Resultat r = reussi("dossier", "generer", "1");
+
+            assertThat(r.sortie())
+                    .contains("Dossier de #1 Acme — Stagiaire data analyst : jusqu'à 3 passe(s) de trois appels à claude-opus-5-5.")
+                    .contains("  Première passe : CV ciblé…")
+                    .contains("Note globale : 87/100, seuil 75 atteint — ATS 67/100 · recruteur 100/100")
+                    .contains("      • Suivi des ventes sous Power BI [exp-acme-r1] (pertinence 1)")
+                    .contains("Lettre — Acme — Service du recrutement · Le 10 octobre 2026")
+                    .contains("    Acme, éditeur lyonnais de logiciels de gestion, cherche un stagiaire data analyst pour six mois à "
+                            + "partir de mars 2027. [offre]")
+                    .contains("  retrouvées : [O] SQL").contains("  absentes : [S] Tableau")
+                    .contains("  Langue 5/5 — Solide.")
+                    .contains("  Corrections proposées" + FIN + "    - Resserrez l'objet")
+                    .contains("  Corrections écartées : elles demandaient un fait absent du profil (RG-07)" + FIN + "    - Citez Tableau")
+                    .contains("Rapport : une passe, ")
+                    .contains("Aperçus : " + dossier.resolve("apercus").resolve("dossier-1-cv.pdf") + " et dossier-1-lettre.pdf")
+                    .contains("Coût de la génération : 3 appels, 0,0045 $.");
+            assertThat(dossier.resolve("apercus").resolve("dossier-1-cv.pdf")).exists();
+            assertThat(dossier.resolve("apercus").resolve("dossier-1-lettre.pdf")).exists();
+            assertThat(faux.demandes()).extracting(Demande::tache)
+                    .containsExactly("analyse-offre", "rapprochement", "cv-cible", "lettre", "avis-recruteur");
+
+            assertThat(reussi("dossier", "voir", "1").sortie())
+                    .contains("Dossier de #1 Acme — Stagiaire data analyst, généré le 10/10/2026.")
+                    .contains("Note globale : 87/100").contains("[exp-acme-r1, exp-acme-r2]")
+                    .contains("Aperçus : ")
+                    .doesNotContain("Le profil a changé");
+            assertThat(reussi("voir", "1").sortie())
+                    .contains("Dossier : généré le 10/10/2026, note globale 87/100, non validé. Pour le relire : postulat dossier voir 1")
+                    .contains("Modèle de langage : 5 appels, 0,0075 $");
+
+            Files.writeString(dossier.resolve("profil.yaml"), LeProfil.VALIDE.replace("nom: SQL", "nom: SQL, niveau: avancé"));
+            assertThat(reussi("dossier", "voir", "1").sortie()).contains("Le profil a changé depuis : ce dossier n'en tient pas compte.");
+        }
+
+        @Test
+        void les_apercus_se_reecrivent_sans_rien_regenerer() throws IOException {
+            candidaturePrete();
+            faux.repondre(CV).repondre(LETTRE).repondre(avis(5));
+            reussi("dossier", "generer", "1");
+            Path cv = dossier.resolve("apercus").resolve("dossier-1-cv.pdf");
+            Files.delete(cv);
+
+            assertThat(reussi("dossier", "voir", "1").sortie()).doesNotContain("Aperçus");
+            assertThat(reussi("dossier", "voir", "1", "--apercus").sortie()).contains("Aperçus réécrits : " + cv);
+            assertThat(cv).exists();
+            assertThat(faux.demandes()).hasSize(5);
+        }
+
+        @Test
+        void une_offre_non_poursuivie_ne_se_genere_pas() throws IOException {
+            candidaturePrete();
+            reussi("ajouter", "Initech", "Stage BI", "--etape", "à_préparer");
+            faux.repondre(LesOffres.FICHE).repondre(LesOffres.RAPPROCHEMENT);
+            reussi("offre", "ajouter", Files.writeString(dossier.resolve("offre-globex.txt"), LesOffres.TEXTE.replace("Acme", "Globex"))
+                    .toString(), "--entreprise", "Globex");
+
+            Resultat reperee = postulat("dossier", "generer", "3");
+            Resultat sansOffre = postulat("dossier", "generer", "2");
+
+            assertThat(reperee.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(reperee.erreurs()).contains("est à l'étape « repérée » : un dossier se génère à l'étape « à_préparer ».")
+                    .contains("postulat avancer 3 à_préparer");
+            assertThat(sansOffre.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(sansOffre.erreurs()).contains("saisie sans offre");
+            assertThat(faux.demandes()).hasSize(4);
+        }
+
+        @Test
+        void un_profil_incomplet_est_refuse_avant_tout_appel() throws IOException {
+            candidaturePrete();
+            Files.writeString(dossier.resolve("profil.yaml"), "identite:\n  nom: à compléter\n");
+
+            Resultat r = postulat("dossier", "generer", "1");
+
+            assertThat(r.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(r.erreurs()).contains("Le profil a").contains("rien n'est produit").contains("postulat profil verifier");
+            assertThat(faux.demandes()).hasSize(2);
+        }
+
+        @Test
+        void une_generation_en_echec_ne_laisse_que_son_cout_au_journal() throws IOException {
+            candidaturePrete();
+            CvGenere fautif = cv("Conçu un tableau de bord Tableau pour 40 commerciaux");
+            faux.repondre(fautif).repondre(fautif);
+
+            Resultat r = postulat("dossier", "generer", "1");
+
+            assertThat(r.code()).isEqualTo(Postulat.ERREUR);
+            assertThat(r.sortie()).contains("Coût engagé malgré l'échec : 2 appels, 0,0030 $.");
+            assertThat(r.erreurs()).contains("Génération échouée, rien n'a été enregistré").contains("RG-03").contains("RG-04");
+            assertThat(postulat("dossier", "voir", "1").erreurs()).contains("n'a pas encore de dossier")
+                    .contains("postulat dossier generer 1");
+            assertThat(reussi("voir", "1").sortie()).contains("Dossier : aucun dossier rattaché.")
+                    .contains("Modèle de langage : 4 appels");
+            assertThat(dossier.resolve("apercus").resolve("dossier-1-cv.pdf")).doesNotExist();
         }
     }
 

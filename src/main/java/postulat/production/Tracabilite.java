@@ -26,12 +26,22 @@ public final class Tracabilite {
      * @param lacunes les exigences de l'offre qu'aucun fait ne couvre : aucune ne doit apparaître (RG-04)
      */
     public static List<Violation> verifier(List<Assertion> assertions, Profil profil, Collection<Exigence> lacunes) {
+        return verifier(assertions, profil, lacunes, "");
+    }
+
+    /**
+     * Comme ci-dessus, avec le texte de l'offre dont les assertions d'origine « offre » doivent tirer
+     * leurs données chiffrées (CA-4.3).
+     */
+    public static List<Violation> verifier(
+            List<Assertion> assertions, Profil profil, Collection<Exigence> lacunes, String texteOffre) {
         List<Violation> violations = new ArrayList<>();
         for (int i = 0; i < assertions.size(); i++) {
             Assertion a = assertions.get(i);
             switch (a.origine()) {
                 case Origine.Auteur auteur -> { } // CA-3.8 : traçable à son auteur, pas au profil
                 case Origine.Faits faits -> verifierFaits(i, a.texte(), faits, profil, lacunes, violations);
+                case Origine.Offre offre -> verifierOffre(i, a.texte(), texteOffre, lacunes, violations);
             }
         }
         return violations;
@@ -64,7 +74,22 @@ public final class Tracabilite {
                     + liste(injustifies) + "."));
         }
 
-        // RG-04 : une lacune se signale, elle ne s'écrit jamais.
+        lacunes(i, texte, lacunes, violations);
+    }
+
+    /** Une phrase sur l'entreprise ne dit que ce que l'offre dit : ses nombres y figurent (CA-4.3). */
+    private static void verifierOffre(int i, String texte, String texteOffre, Collection<Exigence> lacunes, List<Violation> violations) {
+        Set<String> justifies = Nombres.extraire(texteOffre);
+        List<String> injustifies = Nombres.extraire(texte).stream().filter(n -> !justifies.contains(n)).toList();
+        if (!injustifies.isEmpty()) {
+            violations.add(new Violation(i, "RG-03", "donnée(s) chiffrée(s) absente(s) du texte de l'offre : "
+                    + liste(injustifies) + "."));
+        }
+        lacunes(i, texte, lacunes, violations);
+    }
+
+    /** RG-04 : une lacune se signale, elle ne s'écrit jamais — pas même pour dire que l'offre la demande. */
+    private static void lacunes(int i, String texte, Collection<Exigence> lacunes, List<Violation> violations) {
         for (Exigence lacune : lacunes) {
             if (Mentions.mentionne(texte, lacune.libelle())) {
                 violations.add(new Violation(i, "RG-04", "mentionne « " + lacune.libelle()

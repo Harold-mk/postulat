@@ -1,12 +1,16 @@
 package postulat.stockage;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,7 +67,13 @@ public final class LecteurProfil {
         LoadSettings reglages = LoadSettings.builder().setLabel(fichier.getFileName().toString()).build();
         LecteurProfil lecteur = new LecteurProfil();
         Optional<Profil> profil;
-        try (InputStream entree = Files.newInputStream(fichier)) {
+        byte[] contenu;
+        try {
+            contenu = Files.readAllBytes(fichier);
+        } catch (IOException e) {
+            throw new ErreurStockage("Lecture du profil " + fichier + " impossible : " + e, e);
+        }
+        try (InputStream entree = new ByteArrayInputStream(contenu)) {
             Optional<Node> racine = new Compose(reglages).composeInputStream(entree);
             profil = racine.isEmpty() ? lecteur.vide() : lecteur.profil(racine.get());
         } catch (MarkedYamlEngineException e) {
@@ -77,7 +87,16 @@ public final class LecteurProfil {
         }
         profil.ifPresent(p -> p.anomalies().forEach(lecteur::situer));
         lecteur.problemes.sort(Comparator.comparingInt(Probleme::ligne).thenComparingInt(Probleme::colonne));
-        return new LectureProfil(fichier, profil, lecteur.problemes);
+        return new LectureProfil(fichier, empreinte(contenu), profil, lecteur.problemes);
+    }
+
+    /** SHA-256 du fichier tel qu'il a été lu : ce qui permet de dire de quel profil un dossier est issu. */
+    static String empreinte(byte[] contenu) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(contenu));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 est garanti par toute machine virtuelle Java.", e);
+        }
     }
 
     // --- structure ---

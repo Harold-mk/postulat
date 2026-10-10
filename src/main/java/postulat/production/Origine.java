@@ -5,8 +5,17 @@ import java.util.List;
 /**
  * Provenance d'une assertion (glossaire § 4.1, § 4.3-e). Une assertion porte exactement une origine
  * (RG-02) : c'est un champ unique d'un type fermé, donc il n'y a pas de cas « aucune » ni « deux ».
+ *
+ * <p>Trois origines, et non deux comme le prévoyait le cadrage : une lettre parle aussi de l'entreprise,
+ * et ces phrases ne viennent ni du profil ni de l'auteur, mais du texte de l'offre (lacune L-03).
  */
 public sealed interface Origine {
+
+    /**
+     * Tirée du texte de l'offre : ce que l'entreprise fait et cherche (CA-4.3, lacune L-03). Elle ne
+     * dit que ce que l'offre dit, et n'affirme rien sur le candidat.
+     */
+    record Offre() implements Origine {}
 
     /**
      * Dérivée des faits du profil désignés par leurs identifiants (CA-3.1). Une liste vide est

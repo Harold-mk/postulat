@@ -59,6 +59,7 @@ import postulat.suivi.RefusMetier;
             Archives.Restaurer.class,
             Profils.CommandeProfil.class,
             Documents.CommandeCv.class,
+            Dossiers.CommandeDossier.class,
             Modeles.CommandeModele.class,
         },
         footer = {"", "Exemples :",

@@ -12,6 +12,7 @@ import java.util.stream.Stream;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import postulat.stockage.Base;
+import postulat.stockage.DossierGenere;
 import postulat.stockage.CoutModele;
 import postulat.stockage.Numerotee;
 import postulat.stockage.Offre;
@@ -204,11 +205,13 @@ final class Consultations {
             List<Contact> contacts;
             CoutModele cout;
             Optional<Offre> offre;
+            Optional<DossierGenere> dossier;
             try (Base base = ouvrirBase()) {
                 n = trouver(base);
                 contacts = base.contacts(n.candidature().id());
                 cout = base.coutModele(n.candidature().id());
                 offre = base.offre(n.candidature().id());
+                dossier = base.dossier(n.candidature().id());
             }
             Candidature c = n.candidature();
             PrintWriter out = sortie();
@@ -217,7 +220,10 @@ final class Consultations {
             out.println("Étape : " + c.etape() + ", depuis le " + Affichage.date(c.dateEntreeEtape()) + " ("
                     + Affichage.ilYA(c.dateEntreeEtape(), aujourdhui) + ")");
             // UC-12 A1 : l'absence de dossier se dit, elle ne se devine pas.
-            out.println("Dossier : aucun dossier rattaché.");
+            out.println(dossier.map(d -> "Dossier : généré le "
+                            + Affichage.date(LocalDate.ofInstant(d.genereLe(), racine().horloge().getZone())) + ", note globale "
+                            + d.dossier().evaluation().noteGlobale() + "/100, non validé. Pour le relire : postulat dossier voir " + n.numero())
+                    .orElse("Dossier : aucun dossier rattaché."));
             // EN-5 : le coût par candidature s'affiche.
             out.println("Modèle de langage : " + (cout.appels() == 0 ? "aucun appel"
                     : Affichage.appels(cout.appels()) + ", " + Affichage.dollars(cout.coutMicroDollars())));

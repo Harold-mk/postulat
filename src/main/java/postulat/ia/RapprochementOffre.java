@@ -8,14 +8,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import postulat.ia.ErreurModele.Nature;
-import postulat.production.Competence;
 import postulat.production.Couverture;
 import postulat.production.Exigence;
-import postulat.production.Experience;
-import postulat.production.Formation;
 import postulat.production.Profil;
 import postulat.production.Rapprochement;
-import postulat.production.Realisation;
 
 /**
  * P3 et P4 : rapprocher les exigences d'une offre des faits du profil, puis noter l'adéquation (UC-05,
@@ -72,27 +68,10 @@ public final class RapprochementOffre {
                 .mapToObj(i -> (i + 1) + ". [" + (exigences.get(i).obligatoire() ? "obligatoire" : "souhaitée") + "] "
                         + exigences.get(i).libelle())
                 .collect(Collectors.joining("\n"));
-        Demande demande = new Demande("rapprochement", Gamme.CAPABLE, CONSIGNES + "\nProfil :\n" + texte(profil),
+        Demande demande = new Demande("rapprochement", Gamme.CAPABLE, CONSIGNES + "\nProfil :\n" + TexteProfil.de(profil, false),
                 "Exigences de l'offre :\n" + numerotees, Optional.of(candidature));
         RapprochementLu lu = modele.demander(demande, RapprochementLu.class).valeur();
         return verifier(lu, profil, exigences);
-    }
-
-    /** Le profil tel que le modèle le lit : un fait par ligne, précédé de l'identifiant qu'il devra citer. */
-    static String texte(Profil profil) {
-        List<String> lignes = new ArrayList<>();
-        for (Experience e : profil.experiences()) {
-            lignes.add("[" + e.id() + "] Expérience : " + joindre(e.poste(), e.organisation(), e.periode(), e.duree(), e.lieu()));
-            e.realisations().forEach(r -> lignes.add(ligne(r, e.id())));
-        }
-        for (Formation f : profil.formations()) {
-            lignes.add("[" + f.id() + "] Formation : " + joindre(f.diplome(), f.etablissement(), f.periode(), f.details()));
-            f.realisations().forEach(r -> lignes.add(ligne(r, f.id())));
-        }
-        for (Competence c : profil.competences()) {
-            lignes.add("[" + c.id() + "] Compétence : " + joindre(c.nom(), c.niveau()));
-        }
-        return String.join("\n", lignes);
     }
 
     // --- interne ---
@@ -129,15 +108,5 @@ public final class RapprochementOffre {
 
     private static ErreurModele invalide(String raison) {
         return new ErreurModele(Nature.INVALIDE, "Rapprochement refusé, rien n'a été enregistré : " + raison + ".", null, null);
-    }
-
-    private static String ligne(Realisation r, String parent) {
-        return "[" + r.id() + "] Réalisation (dans " + parent + ") : objectif : " + r.objectif() + " ; tâche : " + r.tache()
-                + (r.resultat().isEmpty() ? "" : " ; résultat : " + r.resultat())
-                + (r.competences().isEmpty() ? "" : " ; compétences : " + String.join(", ", r.competences()));
-    }
-
-    private static String joindre(String... parties) {
-        return java.util.Arrays.stream(parties).filter(p -> !p.isBlank()).collect(Collectors.joining(" — "));
     }
 }

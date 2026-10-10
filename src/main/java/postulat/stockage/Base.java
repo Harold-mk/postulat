@@ -172,6 +172,22 @@ public final class Base implements AutoCloseable {
         });
     }
 
+    /**
+     * Enregistre le dossier généré pour une candidature, en remplaçant le précédent d'un seul tenant
+     * (UC-07 E4) : on ne trouve jamais un dossier fait de deux générations.
+     */
+    public void enregistrerDossier(UUID candidature, DossierGenere dossier) {
+        transaction(() -> {
+            new TablesDossier(connexion, candidature).ecrire(dossier);
+            return null;
+        });
+    }
+
+    /** Le dossier courant d'une candidature, s'il en a un. */
+    public Optional<DossierGenere> dossier(UUID candidature) {
+        return lecture(() -> new TablesDossier(connexion, candidature).lire());
+    }
+
     /** La candidature dont l'offre a exactement ce texte : la même offre collée deux fois (RG-18). */
     public Optional<Numerotee> candidatureDeLOffre(String texteBrut) {
         Optional<Long> numero = lecture(() -> {
