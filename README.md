@@ -17,7 +17,8 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 4 | Note ATS déterministe | ✅ |
 | 5 | Modèle de langage : adaptateur Anthropic, coût mesuré et journalisé, double de test | ✅ |
 | 6 | Analyse d'offre, rapprochement avec le profil, note d'adéquation, arbitrage (UC-05, UC-06) | ✅ |
-| 7–8 | Rendu sur une page, CV ciblé, lettre, évaluation, phrases versées au profil (UC-04), import d'un CV (UC-02) | à venir |
+| 7 | Rendu PDF sur une page, compaction puis retrait des phrases les moins pertinentes, relecture du texte (RG-05, RG-26) | ✅ |
+| 8 | CV ciblé, lettre, évaluation, dossier PDF et DOCX, phrases versées au profil (UC-04), import d'un CV (UC-02) | à venir |
 | 9 | Interface de bureau | à venir |
 
 ## Ce qui fonctionne aujourd'hui
@@ -74,6 +75,13 @@ La production de documents a ses fondations, sans modèle de langage pour l'inst
   est refusé en entier. La décision reste au candidat — poursuivre, ou écarter avec un motif ; sans
   décision, l'offre reste un brouillon du tableau de bord. Modèle indisponible ? L'offre est
   conservée, analysable plus tard. Profil incomplet ? Elle est analysée, et le rapprochement attend.
+- **Le rendu sur une page.** Un CV se met en page sur une feuille A4, calculée ligne par ligne avec
+  les mesures exactes de la police : on sait s'il tient avant de le dessiner. S'il déborde, la mise
+  en page se compacte, jamais sous 9 points ; s'il déborde encore, le code retire les puces les moins
+  pertinentes, dans l'ordre fixé à la génération, et les liste toutes — on ne demande jamais au
+  modèle de raccourcir. Puis le PDF est relu comme le ferait un filtre ATS : c'est ce texte-là que la
+  note examine, et une phrase qu'on n'y retrouverait pas est signalée. `cv apercu` rend dès
+  aujourd'hui le CV tiré du profil entier, pour juger la mise en page sur ses propres faits.
 - **Le modèle de langage est branché** derrière une seule interface,
   `Modele`, et son adaptateur vers l'API Anthropic. Le modèle répond dans une forme imposée (sorties
   structurées), la partie stable des demandes — consignes et profil — est mise en cache, et un refus des classifieurs de
@@ -109,6 +117,7 @@ java -jar target/postulat.jar actions
 | `interaction N courriel\|appel [--notes TEXTE]` · `contact N NOM` · `noter N TEXTE` | la mémoire des échanges |
 | `sauvegarder` · `restaurer ARCHIVE` | archive datée ; retour à une archive après vérification |
 | `profil initialiser` · `profil verifier` | écrire le gabarit commenté du profil ; dire ce qui y manque, à la ligne près |
+| `cv apercu [--offre N] [--sortie FICHIER]` | rendre sur une page le CV tiré du profil, le relire, et le noter face à une offre |
 | `modele essai [--gamme capable]` · `modele couts` | vérifier la clé d'API par un appel minuscule ; le cumul des coûts, mois par mois |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
@@ -142,7 +151,7 @@ git refusent de toute façon un commit qui contiendrait une clé.
 
 ## Architecture
 
-Volontairement simple : cinq paquets rangés par sujet.
+Volontairement simple : six paquets rangés par sujet.
 
 ```
 postulat/
@@ -151,6 +160,7 @@ postulat/
   stockage/     SQLite en JDBC nu, migrations, sauvegardes,        sqlite-jdbc
                 lecture du profil YAML                             snakeyaml-engine
   ia/           interface Modele, client Anthropic, journal        anthropic-java
+  rendu/        mise en page PDF sur une page, relecture du texte  pdfbox
   cli/          ligne de commande                                  picocli
 ```
 

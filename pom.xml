@@ -18,6 +18,7 @@
         <picocli.version>4.7.7</picocli.version>
         <snakeyaml-engine.version>3.1.1</snakeyaml-engine.version>
         <anthropic-java.version>2.65.0</anthropic-java.version>
+        <pdfbox.version>3.0.8</pdfbox.version>
         <!-- Rempli par JaCoCo ; vide par défaut pour que surefire démarre aussi sans lui. -->
         <argLine></argLine>
     </properties>
@@ -40,6 +41,12 @@
             <groupId>com.anthropic</groupId>
             <artifactId>anthropic-java</artifactId>
             <version>${anthropic-java.version}</version>
+        </dependency>
+        <!-- Rendu des documents et relecture de leur texte, dans le paquet rendu seulement (pile technique § 6). -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
         </dependency>
         <!-- Le SDK journalise par SLF4J ; sans ce branchement « muet », chaque commande afficherait
              trois lignes d'avertissement. postulat a son propre journal, celui des appels en base. -->
@@ -129,6 +136,8 @@
                                         <exclude>META-INF/*.RSA</exclude>
                                         <!-- Le manifeste est réécrit en entier par le transformateur ci-dessous. -->
                                         <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <!-- Liste informative des dépendances, propre à chaque jar de PDFBox. -->
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
                                     </excludes>
                                 </filter>
                                 <!-- okio et okio-jvm portent le même descripteur de module Kotlin. -->

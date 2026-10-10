@@ -760,6 +760,70 @@ class PostulatTest {
     }
 
     @Nested
+    class LApercuDuCv {
+
+        void profil() throws IOException {
+            Files.createDirectories(dossier);
+            Files.writeString(dossier.resolve("profil.yaml"), LeProfil.VALIDE);
+        }
+
+        @Test
+        void l_apercu_du_profil_tient_sur_une_page_cite_ses_faits_et_se_relit() throws IOException {
+            profil();
+
+            Resultat r = reussi("cv", "apercu");
+
+            Path pdf = dossier.resolve("apercus").resolve("cv-apercu.pdf");
+            assertThat(r.sortie()).contains("Aperçu écrit : " + pdf + " (une page, mise en page « aéré »)")
+                    .contains("Traçabilité : 7 phrases, chacune tirée d'un fait du profil.")
+                    .contains("Tout le profil tient sur la page.")
+                    .contains("Relu comme le ferait un filtre ATS");
+            assertThat(postulat.rendu.Rendu.pages(Files.readAllBytes(pdf))).isEqualTo(1);
+            assertThat(postulat.rendu.Rendu.texte(Files.readAllBytes(pdf))).contains("Contrôles SQL quotidiens");
+        }
+
+        @Test
+        void l_apercu_s_ecrit_ou_on_le_demande_et_remplace_le_precedent() throws IOException {
+            profil();
+            Path ailleurs = dossier.resolve("sorties").resolve("mon-cv.pdf");
+
+            reussi("cv", "apercu", "--sortie", ailleurs.toString());
+            reussi("cv", "apercu", "--sortie", ailleurs.toString());
+
+            assertThat(ailleurs).exists();
+            assertThat(ailleurs.resolveSibling("mon-cv.pdf.provisoire")).doesNotExist();
+        }
+
+        @Test
+        void face_a_une_offre_analysee_l_apercu_recoit_sa_note_ats() throws IOException {
+            profil();
+            faux.repondre(LesOffres.FICHE).repondre(LesOffres.RAPPROCHEMENT);
+            reussi("offre", "ajouter", Files.writeString(dossier.resolve("offre.txt"), LesOffres.TEXTE).toString());
+
+            assertThat(reussi("cv", "apercu", "--offre", "1").sortie()).containsPattern("Note ATS face à l'offre n° 1 : \\d+/100\\.");
+        }
+
+        @Test
+        void sans_profil_utilisable_ou_sans_offre_analysee_rien_n_est_rendu() throws IOException {
+            assertThat(postulat("cv", "apercu").erreurs()).contains("Aucun profil");
+
+            Files.writeString(dossier.resolve("profil.yaml"), "identite:\n  nom: à compléter\n");
+            assertThat(postulat("cv", "apercu").erreurs()).contains("postulat profil verifier");
+
+            profil();
+            reussi("ajouter", "Acme", "Stage");
+            assertThat(postulat("cv", "apercu", "--offre", "1").erreurs()).contains("pas d'offre analysée");
+            assertThat(postulat("cv", "apercu", "--offre", "9").erreurs()).contains("Aucune candidature n° 9");
+            assertThat(dossier.resolve("apercus")).doesNotExist();
+        }
+
+        @Test
+        void sans_sous_commande_l_aide_du_cv_s_affiche() {
+            assertThat(reussi("cv").sortie()).contains("apercu");
+        }
+    }
+
+    @Nested
     class LeModele {
 
         @Test

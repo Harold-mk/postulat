@@ -23,6 +23,7 @@ import picocli.CommandLine.UnmatchedArgumentException;
 import postulat.ia.ErreurModele;
 import postulat.ia.Modele;
 import postulat.ia.ModeleAnthropic;
+import postulat.rendu.ErreurRendu;
 import postulat.stockage.Donnees;
 import postulat.stockage.ErreurStockage;
 import postulat.stockage.Reglages;
@@ -57,6 +58,7 @@ import postulat.suivi.RefusMetier;
             Archives.Sauvegarder.class,
             Archives.Restaurer.class,
             Profils.CommandeProfil.class,
+            Documents.CommandeCv.class,
             Modeles.CommandeModele.class,
         },
         footer = {"", "Exemples :",
@@ -136,7 +138,7 @@ public final class Postulat implements Callable<Integer> {
                 fautive.getErr().println(e.getMessage());
                 return REFUSE;
             }
-            boolean explique = e instanceof ErreurStockage || e instanceof ErreurModele;
+            boolean explique = e instanceof ErreurStockage || e instanceof ErreurModele || e instanceof ErreurRendu;
             fautive.getErr().println(explique ? e.getMessage() : "Erreur inattendue : " + e);
             return ERREUR;
         });
