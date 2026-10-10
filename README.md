@@ -14,7 +14,7 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 1 | Domaine du suivi : étapes, transitions, journal d'événements, relances | ✅ |
 | 2 | Stockage SQLite, ligne de commande, tableau de bord, sauvegarde (UC-10 à UC-18) | ✅ |
 | 3 | Profil, gabarit, validation, vérification de traçabilité (UC-01, UC-03) | ✅ |
-| 4 | Note ATS | à venir |
+| 4 | Note ATS déterministe | ✅ |
 | 5–8 | Modèle de langage, import d'un CV existant (UC-02), CV ciblé, lettre, évaluation | à venir |
 | 9 | Interface de bureau | à venir |
 
@@ -59,6 +59,11 @@ La production de documents a ses fondations, sans modèle de langage pour l'inst
   vingtaine » aussi — et ne jamais mentionner une exigence de l'offre que le profil ne couvre pas
   (RG-04). Une phrase écrite par l'auteur n'est jamais rejetée. Des tests adversariaux reproduisent
   les inventions typiques d'un modèle.
+- **La note ATS**, qui simule un filtre de recrutement par mots-clés, sans modèle de langage. Elle
+  est délibérément littérale, comme un vrai filtre : une exigence de l'offre compte si son libellé
+  figure tel quel dans le texte extrait du document, casse et accents mis à part — « PowerBI » ne
+  vaut pas « Power BI ». Une exigence obligatoire pèse deux fois une souhaitée ; la note dit aussi
+  quelles obligatoires manquent, celles qu'un filtre strict tiendrait pour éliminatoires.
 
 ## Utilisation
 

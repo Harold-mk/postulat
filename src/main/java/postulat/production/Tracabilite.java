@@ -1,11 +1,9 @@
 package postulat.production;
 
-import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -27,7 +25,7 @@ public final class Tracabilite {
      *
      * @param lacunes les exigences de l'offre qu'aucun fait ne couvre : aucune ne doit apparaître (RG-04)
      */
-    public static List<Violation> verifier(List<Assertion> assertions, Profil profil, Collection<String> lacunes) {
+    public static List<Violation> verifier(List<Assertion> assertions, Profil profil, Collection<Exigence> lacunes) {
         List<Violation> violations = new ArrayList<>();
         for (int i = 0; i < assertions.size(); i++) {
             Assertion a = assertions.get(i);
@@ -42,7 +40,7 @@ public final class Tracabilite {
     // --- interne ---
 
     private static void verifierFaits(
-            int i, String texte, Origine.Faits faits, Profil profil, Collection<String> lacunes, List<Violation> violations) {
+            int i, String texte, Origine.Faits faits, Profil profil, Collection<Exigence> lacunes, List<Violation> violations) {
         if (faits.ids().isEmpty()) {
             violations.add(new Violation(i, "CA-3.1", "ne cite aucun fait : une assertion d'origine « faits » en cite au moins un."));
         }
@@ -67,27 +65,12 @@ public final class Tracabilite {
         }
 
         // RG-04 : une lacune se signale, elle ne s'écrit jamais.
-        for (String lacune : lacunes) {
-            if (mentionne(texte, lacune)) {
-                violations.add(new Violation(i, "RG-04", "mentionne « " + lacune
+        for (Exigence lacune : lacunes) {
+            if (Mentions.mentionne(texte, lacune.libelle())) {
+                violations.add(new Violation(i, "RG-04", "mentionne « " + lacune.libelle()
                         + " », exigence qu'aucun fait ne couvre : elle se signale comme lacune, elle ne s'écrit pas."));
             }
         }
-    }
-
-    /** Mention en mots entiers, sans tenir compte de la casse ni des accents : « SQL » n'est pas dans « NoSQL ». */
-    static boolean mentionne(String texte, String terme) {
-        String cherche = cle(terme);
-        return !cherche.isEmpty() && (" " + cle(texte) + " ").contains(" " + cherche + " ");
-    }
-
-    /** Minuscules sans accents, tout séparateur réduit à une espace ; « + » et « # » gardés pour C++ et C#. */
-    private static String cle(String texte) {
-        return Normalizer.normalize(texte, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9+#]+", " ")
-                .strip();
     }
 
     private static String liste(Collection<String> elements) {

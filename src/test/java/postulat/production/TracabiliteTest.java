@@ -24,6 +24,10 @@ class TracabiliteTest {
         return violations.stream().map(Violation::regle).toList();
     }
 
+    static List<Exigence> lacunes(String... libelles) {
+        return java.util.Arrays.stream(libelles).map(Exigence::obligatoire).toList();
+    }
+
     @Nested
     class Recevables {
 
@@ -48,14 +52,14 @@ class TracabiliteTest {
         void une_assertion_de_l_auteur_n_est_jamais_rejetee() {
             List<Violation> v = Tracabilite.verifier(
                     List.of(new Assertion("J'ai formé 40 personnes à Looker", new Origine.Auteur())),
-                    PROFIL, List.of("Looker"));
+                    PROFIL, lacunes("Looker"));
 
             assertThat(v).isEmpty();
         }
 
         @Test
         void un_document_vide_est_recevable() {
-            assertThat(Tracabilite.verifier(List.of(), PROFIL, List.of("Tableau"))).isEmpty();
+            assertThat(Tracabilite.verifier(List.of(), PROFIL, lacunes("Tableau"))).isEmpty();
         }
     }
 
@@ -106,7 +110,7 @@ class TracabiliteTest {
         void une_exigence_non_couverte_ne_s_ecrit_jamais() {
             List<Violation> v = Tracabilite.verifier(
                     List.of(new Assertion("Tableau de bord Power BI, puis migration vers Looker", STAGE_ET_DASHBOARD)),
-                    PROFIL, List.of("Looker", "Kubernetes"));
+                    PROFIL, lacunes("Looker", "Kubernetes"));
 
             assertThat(v).singleElement().satisfies(x -> {
                 assertThat(x.regle()).isEqualTo("RG-04");
@@ -123,7 +127,7 @@ class TracabiliteTest {
         @Test
         void une_lacune_homonyme_d_un_mot_courant_fait_refuser_par_prudence() {
             List<Violation> v = Tracabilite.verifier(
-                    List.of(new Assertion("Tableau de bord Power BI", STAGE_ET_DASHBOARD)), PROFIL, List.of("Tableau"));
+                    List.of(new Assertion("Tableau de bord Power BI", STAGE_ET_DASHBOARD)), PROFIL, lacunes("Tableau"));
 
             assertThat(regles(v)).containsExactly("RG-04");
         }
@@ -133,7 +137,7 @@ class TracabiliteTest {
             List<Violation> v = Tracabilite.verifier(List.of(
                             new Assertion("Stage chez Acme", Origine.Faits.de("exp-acme")),
                             new Assertion("Tableau de bord de 9 KPI sous Looker", Origine.Faits.de("exp-acme-dashboard", "exp-x"))),
-                    PROFIL, List.of("Looker"));
+                    PROFIL, lacunes("Looker"));
 
             assertThat(v).extracting(Violation::assertion, Violation::regle)
                     .containsExactly(
@@ -193,7 +197,7 @@ class TracabiliteTest {
         void un_outil_de_l_offre_glisse_dans_une_phrase_vraie() {
             List<Violation> v = Tracabilite.verifier(
                     List.of(new Assertion("Tableau de bord Power BI alimenté par dbt et SQL", STAGE_ET_DASHBOARD)),
-                    PROFIL, List.of("dbt"));
+                    PROFIL, lacunes("dbt"));
 
             assertThat(regles(v)).containsExactly("RG-04");
         }
@@ -202,30 +206,9 @@ class TracabiliteTest {
         void une_lacune_ecrite_autrement() {
             List<Violation> v = Tracabilite.verifier(
                     List.of(new Assertion("Notions de MACHINE-LEARNING appliquées aux ventes", STAGE_ET_DASHBOARD)),
-                    PROFIL, List.of("Machine learning"));
+                    PROFIL, lacunes("Machine learning"));
 
             assertThat(regles(v)).containsExactly("RG-04");
-        }
-    }
-
-    @Nested
-    class Mentions {
-
-        @Test
-        void une_mention_se_cherche_en_mots_entiers() {
-            assertThat(Tracabilite.mentionne("Bases NoSQL", "SQL")).isFalse();
-            assertThat(Tracabilite.mentionne("Requêtes SQL avancées", "sql")).isTrue();
-        }
-
-        @Test
-        void les_langages_a_symboles_restent_distincts() {
-            assertThat(Tracabilite.mentionne("Développement en C++", "C++")).isTrue();
-            assertThat(Tracabilite.mentionne("Développement en C#", "C++")).isFalse();
-        }
-
-        @Test
-        void un_terme_vide_n_est_jamais_mentionne() {
-            assertThat(Tracabilite.mentionne("Tout texte", " - ")).isFalse();
         }
     }
 }
