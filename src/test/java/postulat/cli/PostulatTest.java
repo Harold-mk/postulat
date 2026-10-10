@@ -14,13 +14,18 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 import picocli.CommandLine.TypeConversionException;
+import postulat.ia.AnalyseOffre.ExigenceLue;
+import postulat.ia.AnalyseOffre.FicheOffre;
 import postulat.ia.Demande;
+import postulat.ia.RapprochementOffre.CouvertureLue;
+import postulat.ia.RapprochementOffre.RapprochementLu;
 import postulat.ia.ErreurModele;
 import postulat.ia.FauxModele;
 import postulat.ia.Gamme;
@@ -454,6 +459,18 @@ class PostulatTest {
         }
 
         @Test
+        void la_marque_d_ordre_ajoutee_par_powershell_est_retiree() throws IOException {
+            BufferedReader avecMarque = Postulat.sansMarqueDOrdre(new BufferedReader(new StringReader("﻿Acme\noui")));
+            BufferedReader sansMarque = Postulat.sansMarqueDOrdre(new BufferedReader(new StringReader("Acme")));
+
+            assertThat(avecMarque.readLine()).isEqualTo("Acme");
+            assertThat(avecMarque.readLine()).isEqualTo("oui");
+            assertThat(sansMarque.readLine()).isEqualTo("Acme");
+            assertThat(Conversions.sansMarqueDOrdre("﻿texte")).isEqualTo("texte");
+            assertThat(Conversions.sansMarqueDOrdre("")).isEmpty();
+        }
+
+        @Test
         void la_cle_de_comparaison_ignore_accents_casse_et_separateurs() {
             assertThat(Conversions.cle(" Offre Reçue ")).isEqualTo("offre_recue");
             assertThat(Conversions.cle("à-préparer")).isEqualTo("a_preparer");
@@ -539,6 +556,206 @@ class PostulatTest {
         @Test
         void sans_sous_commande_l_aide_du_profil_s_affiche() {
             assertThat(reussi("profil").sortie()).contains("initialiser").contains("verifier");
+        }
+    }
+
+    @Nested
+    class LesOffres {
+
+        static final String TEXTE = "Acme, éditeur lyonnais de logiciels de gestion, recrute un stagiaire data analyst pour six "
+                + "mois à partir de mars 2027. Missions : construire des tableaux de bord et fiabiliser les données. "
+                + "Profil : maîtrise de SQL exigée ; une connaissance de Tableau serait un plus.";
+
+        static final FicheOffre FICHE = new FicheOffre("Stagiaire data analyst", "Acme", "Lyon", "stage", "mars 2027", "6 mois", "",
+                List.of("Construire des tableaux de bord", "Fiabiliser les données"),
+                List.of(new ExigenceLue("SQL", true), new ExigenceLue("Tableau", false)));
+
+        static final RapprochementLu RAPPROCHEMENT = new RapprochementLu(List.of(
+                new CouvertureLue(1, List.of("comp-sql", "exp-acme-r1"), "SQL avancé."),
+                new CouvertureLue(2, List.of(), "Seul Power BI est pratiqué.")), 72, "Bonne base.");
+
+        Path offre() throws IOException {
+            return Files.writeString(dossier.resolve("offre-acme.txt"), TEXTE);
+        }
+
+        void profil() throws IOException {
+            Files.createDirectories(dossier);
+            Files.writeString(dossier.resolve("profil.yaml"), LeProfil.VALIDE);
+        }
+
+        @Test
+        void une_offre_analysee_et_rapprochee_devient_un_brouillon_note() throws IOException {
+            profil();
+            faux.repondre(FICHE).repondre(RAPPROCHEMENT);
+
+            Resultat r = reussi("offre", "ajouter", offre().toString());
+
+            assertThat(r.sortie())
+                    .contains("Candidature #1 Acme — Stagiaire data analyst ajoutée à l'étape « repérée ».")
+                    .contains("Poste : Stagiaire data analyst · Entreprise : Acme · Lieu : Lyon · Contrat : stage · Début : mars 2027")
+                    .contains("    - Construire des tableaux de bord")
+                    .contains("couverte [O] SQL — comp-sql, exp-acme-r1 : SQL avancé.")
+                    .contains("lacune   [S] Tableau : Seul Power BI est pratiqué.")
+                    .contains("Adéquation : 72/100. Bonne base.")
+                    .contains("Décision : postulat avancer 1 à_préparer · postulat ecarter 1 MOTIF");
+            assertThat(faux.demandes()).extracting(Demande::gamme).containsExactly(Gamme.ECONOMIQUE, Gamme.CAPABLE);
+            assertThat(reussi("voir", "1").sortie()).contains("Modèle de langage : 2 appels, 0,0030 $")
+                    .contains("Adéquation : 72/100").contains("texte conservé : " + TEXTE.length() + " caractères");
+            assertThat(reussi("tableau").sortie()).contains("#1 Acme — Stagiaire data analyst · repérée le 10/10/2026");
+        }
+
+        @Test
+        void sans_profil_l_offre_est_analysee_mais_pas_rapprochee() throws IOException {
+            faux.repondre(FICHE);
+
+            Resultat r = reussi("offre", "ajouter", offre().toString());
+
+            assertThat(r.sortie()).contains("Rapprochement impossible : aucun profil").contains("    [O] SQL")
+                    .contains("Rapprochement avec le profil non fait");
+            assertThat(faux.demandes()).hasSize(1);
+        }
+
+        @Test
+        void un_profil_incomplet_empeche_le_rapprochement_et_le_dit() throws IOException {
+            Files.writeString(dossier.resolve("profil.yaml"), "identite:\n  nom: à compléter\n");
+            faux.repondre(FICHE);
+
+            assertThat(reussi("offre", "ajouter", offre().toString()).sortie())
+                    .contains("Rapprochement impossible : le profil a").contains("postulat profil verifier");
+        }
+
+        @Test
+        void modele_indisponible_l_offre_est_conservee_puis_analysee_plus_tard() throws IOException {
+            faux.echouer(new ErreurModele(ErreurModele.Nature.INDISPONIBLE, "API injoignable.", null, null));
+
+            Resultat r = reussi("offre", "ajouter", offre().toString(), "--entreprise", "Acme", "--poste", "Stage data");
+
+            assertThat(r.sortie()).contains("Analyse impossible : API injoignable.")
+                    .contains("Candidature #1 Acme — Stage data ajoutée").contains("non analysée").contains("postulat offre analyser 1");
+            assertThat(reussi("voir", "1").sortie()).contains("Non analysée");
+
+            profil();
+            faux.repondre(FICHE).repondre(RAPPROCHEMENT);
+            assertThat(reussi("offre", "analyser", "1").sortie()).contains("Offre analysée.").contains("Adéquation : 72/100");
+            assertThat(reussi("voir", "1").sortie()).contains("Modèle de langage : 3 appels, 0,0030 $");
+        }
+
+        @Test
+        void sans_entreprise_connue_elle_est_demandee() throws IOException {
+            faux.echouer(new ErreurModele(ErreurModele.Nature.INDISPONIBLE, "API injoignable.", null, null));
+
+            Resultat r = avecSaisie("Acme\nStage data\n", "offre", "ajouter", offre().toString());
+
+            assertThat(r.code()).isZero();
+            assertThat(r.sortie()).contains("Entreprise de l'offre").contains("Candidature #1 Acme — Stage data ajoutée");
+        }
+
+        @Test
+        void sans_reponse_rien_n_est_enregistre_mais_l_appel_est_journalise() throws IOException {
+            faux.echouer(new ErreurModele(ErreurModele.Nature.INDISPONIBLE, "API injoignable.", null, null));
+
+            Resultat r = postulat("offre", "ajouter", offre().toString());
+
+            assertThat(r.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(r.erreurs()).contains("Entreprise inconnue").contains("--entreprise").contains("Rien n'a été enregistré");
+            assertThat(reussi("liste").sortie()).contains("Aucune candidature");
+            assertThat(reussi("modele", "couts").sortie()).contains("1 appel");
+        }
+
+        @Test
+        void un_texte_trop_court_ou_introuvable_n_est_jamais_analyse() throws IOException {
+            Path court = Files.writeString(dossier.resolve("court.txt"), "Stage data chez Acme.");
+
+            assertThat(postulat("offre", "ajouter", court.toString()).erreurs()).contains("Texte trop court");
+            assertThat(postulat("offre", "ajouter", dossier.resolve("absent.txt").toString()).erreurs()).contains("Fichier introuvable");
+            assertThat(faux.demandes()).isEmpty();
+        }
+
+        @Test
+        void la_meme_offre_collee_deux_fois_ne_cree_ni_doublon_ni_appel() throws IOException {
+            faux.repondre(FICHE);
+            reussi("offre", "ajouter", offre().toString());
+
+            Resultat r = reussi("offre", "ajouter", offre().toString());
+
+            assertThat(r.sortie()).contains("Cette offre est déjà suivie : #1 Acme — Stagiaire data analyst");
+            assertThat(faux.demandes()).hasSize(1);
+        }
+
+        @Test
+        void une_offre_deja_suivie_sous_un_autre_texte_est_reconnue() throws IOException {
+            reussi("ajouter", "Acme", "Stagiaire data analyst");
+            faux.repondre(FICHE);
+
+            Resultat r = reussi("offre", "ajouter", offre().toString());
+
+            assertThat(r.sortie()).contains("déjà suivie : #1").contains("--distincte");
+            assertThat(reussi("liste").sortie()).doesNotContain("#2");
+        }
+
+        @Test
+        void un_rapprochement_qui_cite_un_fait_absent_est_refuse_en_entier() throws IOException {
+            profil();
+            faux.repondre(FICHE).repondre(new RapprochementLu(List.of(
+                    new CouvertureLue(1, List.of("comp-sql"), ""), new CouvertureLue(2, List.of("comp-tableau"), "")), 90, ""));
+
+            Resultat r = reussi("offre", "ajouter", offre().toString());
+
+            assertThat(r.sortie()).contains("Rapprochement impossible : Rapprochement refusé").contains("RG-01").contains("comp-tableau")
+                    .contains("Rapprochement avec le profil non fait");
+        }
+
+        @Test
+        void un_fichier_enregistre_avec_marque_d_ordre_donne_le_meme_texte() throws IOException {
+            faux.repondre(FICHE);
+            reussi("offre", "ajouter", offre().toString());
+            Path avecMarque = Files.writeString(dossier.resolve("offre-bom.txt"), "﻿" + TEXTE);
+
+            assertThat(reussi("offre", "ajouter", avecMarque.toString()).sortie()).contains("déjà suivie : #1");
+        }
+
+        @Test
+        void une_offre_se_lit_aussi_sur_l_entree_standard() {
+            faux.repondre(FICHE);
+
+            Resultat r = avecSaisie(TEXTE, "offre", "ajouter", "-");
+
+            assertThat(r.code()).as(r.erreurs()).isZero();
+            assertThat(faux.demandes().get(0).contenu()).contains(TEXTE);
+        }
+
+        @Test
+        void ecarter_garde_le_motif_et_l_offre() throws IOException {
+            profil();
+            faux.repondre(FICHE).repondre(RAPPROCHEMENT);
+            reussi("offre", "ajouter", offre().toString());
+
+            assertThat(reussi("ecarter", "1", "Tableau", "manque", "trop").sortie())
+                    .contains("#1 Acme — Stagiaire data analyst : écartée le 10/10/2026 : Tableau manque trop.");
+            assertThat(reussi("voir", "1").sortie()).contains("écartée : Tableau manque trop").contains("Adéquation : 72/100");
+        }
+
+        @Test
+        void avancer_vers_ecartee_est_refuse_faute_de_motif() {
+            reussi("ajouter", "Acme", "Stage");
+
+            Resultat r = postulat("avancer", "1", "écartée");
+
+            assertThat(r.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(r.erreurs()).contains("motif");
+        }
+
+        @Test
+        void une_candidature_saisie_a_la_main_n_a_rien_a_analyser() {
+            reussi("ajouter", "Acme", "Stage");
+
+            assertThat(postulat("offre", "analyser", "1").erreurs()).contains("saisie sans offre");
+            assertThat(reussi("voir", "1").sortie()).contains("Offre : aucune, candidature saisie à la main.");
+        }
+
+        @Test
+        void sans_sous_commande_l_aide_de_l_offre_s_affiche() {
+            assertThat(reussi("offre").sortie()).contains("ajouter").contains("analyser");
         }
     }
 

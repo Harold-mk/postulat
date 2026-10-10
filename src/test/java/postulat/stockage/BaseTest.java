@@ -209,7 +209,8 @@ class BaseTest {
         List<Candidature> attendues = new ArrayList<>();
 
         for (int n = 0; n < 150; n++) {
-            Etape depart = Etape.values()[hasard.nextInt(Etape.values().length)];
+            List<Etape> departs = List.of(Etape.values()).stream().filter(e -> e != Etape.ECARTEE).toList();
+            Etape depart = departs.get(hasard.nextInt(departs.size())); // on n'entre pas écartée : on l'est après coup
             LocalDate jour = J0.plusDays(hasard.nextInt(30));
             Candidature c = Candidature.creer("Entreprise " + n, "Stage", depart, jour, AUJOURDHUI.plusYears(1));
             base.creer(c);
@@ -240,7 +241,10 @@ class BaseTest {
                     ? c.planifierEntretien(TypeEntretien.values()[hasard.nextInt(3)], jour.plusDays(5), jour, loin)
                     : c.interagir(Canal.COURRIEL, "échange", jour, loin);
             case 2 -> c.noterRetourPromis(jour.plusDays(hasard.nextInt(10)), jour, loin);
-            default -> c.avancer(suivantes.get(hasard.nextInt(suivantes.size())), jour, loin);
+            default -> {
+                Etape vers = suivantes.get(hasard.nextInt(suivantes.size()));
+                yield vers == Etape.ECARTEE ? c.ecarter("motif " + hasard.nextInt(), jour, loin) : c.avancer(vers, jour, loin);
+            }
         };
     }
 

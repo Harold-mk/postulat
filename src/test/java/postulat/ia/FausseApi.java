@@ -67,7 +67,8 @@ final class FausseApi implements AutoCloseable {
                  "content":[{"type":"text","text":"%s"}],
                  "stop_reason":"%s","stop_sequence":null,
                  "usage":{"input_tokens":%d,"output_tokens":%d,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d}}
-                """.formatted(modele, texte.replace("\\", "\\\\").replace("\"", "\\\""), fin, entree, sortie, lus, ecrits);
+                """.formatted(modele, texte.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
+                fin, entree, sortie, lus, ecrits);
     }
 
     static String erreur(String type, String message) {

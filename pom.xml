@@ -41,6 +41,14 @@
             <artifactId>anthropic-java</artifactId>
             <version>${anthropic-java.version}</version>
         </dependency>
+        <!-- Le SDK journalise par SLF4J ; sans ce branchement « muet », chaque commande afficherait
+             trois lignes d'avertissement. postulat a son propre journal, celui des appels en base. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>2.0.16</version>
+            <scope>runtime</scope>
+        </dependency>
         <!-- Ligne de commande, dans le paquet cli seulement (pile technique § 5). -->
         <dependency>
             <groupId>info.picocli</groupId>

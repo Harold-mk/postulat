@@ -37,6 +37,9 @@ public record Candidature(UUID id, String entreprise, String poste, List<Eveneme
      */
     public static Candidature creer(
             String entreprise, String poste, Etape etape, LocalDate date, LocalDate aujourdhui) {
+        if (etape == Etape.ECARTEE) {
+            throw new RefusMetier("Une offre s'écarte après coup, avec un motif : créez-la, puis écartez-la.");
+        }
         refuserDateFuture(date, aujourdhui);
         return new Candidature(
                 UUID.randomUUID(), entreprise, poste, List.of(new Evenement.Creation(date, etape)));
@@ -49,6 +52,7 @@ public record Candidature(UUID id, String entreprise, String poste, List<Eveneme
             courante = switch (e) {
                 case Evenement.Creation c -> c.etape();
                 case Evenement.ChangementEtape c -> c.vers();
+                case Evenement.Ecartement ec -> Etape.ECARTEE;
                 case Evenement.Reouverture r -> r.vers();
                 case Evenement.RelanceEffectuee r -> courante;
                 case Evenement.EntretienPasse ep -> courante;
@@ -72,7 +76,20 @@ public record Candidature(UUID id, String entreprise, String poste, List<Eveneme
             throw new RefusMetier("Transition « " + actuelle + " » → « " + vers
                     + " » non autorisée. Possibles : " + lister(actuelle) + ".");
         }
+        if (vers == Etape.ECARTEE) {
+            throw new RefusMetier("Écarter une offre demande un motif (UC-06) : c'est une décision, pas un simple changement d'étape.");
+        }
         return ajouter(new Evenement.ChangementEtape(date, vers), aujourdhui);
+    }
+
+    /** Décide de ne pas postuler, en disant pourquoi (UC-06). L'offre et son analyse restent conservées (RG-17). */
+    public Candidature ecarter(String motif, LocalDate date, LocalDate aujourdhui) {
+        Etape actuelle = etape();
+        if (!actuelle.peutAllerVers(Etape.ECARTEE)) {
+            throw new RefusMetier("On n'écarte qu'une offre pas encore envoyée, à l'étape « repérée » ou « à_préparer » ; "
+                    + "celle-ci est à l'étape « " + actuelle + " ».");
+        }
+        return ajouter(new Evenement.Ecartement(date, motif), aujourdhui);
     }
 
     /** Sort explicitement d'une étape terminale (CA-6.5). */
@@ -177,6 +194,7 @@ public record Candidature(UUID id, String entreprise, String poste, List<Eveneme
     private int indexEntreeEtape() {
         for (int i = journal.size() - 1; i > 0; i--) {
             if (journal.get(i) instanceof Evenement.ChangementEtape
+                    || journal.get(i) instanceof Evenement.Ecartement
                     || journal.get(i) instanceof Evenement.Reouverture) {
                 return i;
             }

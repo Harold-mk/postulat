@@ -10,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -23,6 +24,10 @@ import java.util.function.Consumer;
 import postulat.ia.AppelModele;
 import postulat.ia.Consommation;
 import postulat.ia.Demande;
+import postulat.production.Couverture;
+import postulat.production.Exigence;
+import postulat.production.OffreAnalysee;
+import postulat.production.Rapprochement;
 import postulat.suivi.Canal;
 import postulat.suivi.Candidature;
 import postulat.suivi.Contact;
@@ -84,22 +89,101 @@ public final class Base implements AutoCloseable {
 
     /** Enregistre une candidature nouvelle et son journal ; lui attribue son numéro. */
     public Numerotee creer(Candidature c) {
+        return transaction(() -> new Numerotee(insererCandidature(c), c));
+    }
+
+    /**
+     * Crée la candidature avec son offre, d'un seul tenant (UC-05) : jamais l'une sans l'autre. Le texte
+     * brut est conservé tel quel (CA-2.5) ; l'analyse est absente si le modèle était indisponible (E2).
+     */
+    public Numerotee creerDepuisOffre(Candidature c, String source, String texteBrut, Instant recueLe,
+            Optional<OffreAnalysee> analyse) {
         return transaction(() -> {
-            long numero;
+            long numero = insererCandidature(c);
             try (PreparedStatement s = connexion.prepareStatement(
-                    "INSERT INTO candidature (id, entreprise, poste, etape) VALUES (?, ?, ?, ?) RETURNING numero")) {
+                    "INSERT INTO offre (candidature_id, source, texte_brut, recue_le) VALUES (?, ?, ?, ?)")) {
                 s.setString(1, c.id().toString());
-                s.setString(2, c.entreprise());
-                s.setString(3, c.poste());
-                s.setString(4, c.etape().name());
-                try (ResultSet r = s.executeQuery()) {
-                    r.next();
-                    numero = r.getLong(1);
-                }
+                s.setString(2, source);
+                s.setString(3, texteBrut);
+                s.setString(4, recueLe.toString());
+                s.executeUpdate();
             }
-            insererEvenements(c, 0);
+            if (analyse.isPresent()) {
+                ecrireAnalyse(c.id(), analyse.get(), recueLe);
+            }
             return new Numerotee(numero, c);
         });
+    }
+
+    /** Remplace l'analyse d'une offre ; le rapprochement, fondé sur l'ancienne, est effacé avec elle. */
+    public void enregistrerAnalyse(UUID candidature, OffreAnalysee analyse, Instant le) {
+        transaction(() -> {
+            ecrireAnalyse(candidature, analyse, le);
+            return null;
+        });
+    }
+
+    /** Remplace le rapprochement d'une offre analysée, exigence par exigence, dans l'ordre de l'analyse. */
+    public void enregistrerRapprochement(UUID candidature, Rapprochement rapprochement, Instant le) {
+        transaction(() -> {
+            List<Exigence> exigences = exigences(candidature);
+            List<Exigence> rapprochees = rapprochement.couvertures().stream().map(Couverture::exigence).toList();
+            if (!exigences.equals(rapprochees)) {
+                throw new ErreurStockage("Ce rapprochement ne porte pas sur les exigences de l'analyse enregistrée : "
+                        + "rien n'a été enregistré.");
+            }
+            executer("DELETE FROM exigence_fait WHERE candidature_id = ?", candidature.toString());
+            for (int rang = 0; rang < exigences.size(); rang++) {
+                Couverture c = rapprochement.couvertures().get(rang);
+                executer("UPDATE exigence SET justification = ? WHERE candidature_id = ? AND rang = ?",
+                        c.justification(), candidature.toString(), rang);
+                for (String fait : c.faits()) {
+                    executer("INSERT INTO exigence_fait (candidature_id, rang, fait_id) VALUES (?, ?, ?)",
+                            candidature.toString(), rang, fait);
+                }
+            }
+            executer("UPDATE offre SET rapprochee_le = ?, note = ?, justification = ? WHERE candidature_id = ?",
+                    le.toString(), rapprochement.note(), rapprochement.justification(), candidature.toString());
+            return null;
+        });
+    }
+
+    /** L'offre d'une candidature, si elle en a une : une candidature saisie à la main n'en a pas. */
+    public Optional<Offre> offre(UUID candidature) {
+        return lecture(() -> {
+            try (PreparedStatement s = connexion.prepareStatement("SELECT * FROM offre WHERE candidature_id = ?")) {
+                s.setString(1, candidature.toString());
+                try (ResultSet r = s.executeQuery()) {
+                    if (!r.next()) {
+                        return Optional.empty();
+                    }
+                    Optional<Instant> analyseeLe = instant(r.getString("analysee_le"));
+                    Optional<Instant> rapprocheeLe = instant(r.getString("rapprochee_le"));
+                    List<Exigence> exigences = exigences(candidature);
+                    Optional<OffreAnalysee> analyse = analyseeLe.isEmpty() ? Optional.empty() : Optional.of(new OffreAnalysee(
+                            r.getString("poste"), r.getString("entreprise"), r.getString("lieu"), r.getString("contrat"),
+                            r.getString("debut"), r.getString("duree"), r.getString("niveau"), missions(candidature), exigences));
+                    Optional<Rapprochement> rapprochement = rapprocheeLe.isEmpty() ? Optional.empty() : Optional.of(
+                            new Rapprochement(couvertures(candidature, exigences), r.getInt("note"), r.getString("justification")));
+                    return Optional.of(new Offre(r.getString("source"), r.getString("texte_brut"),
+                            Instant.parse(r.getString("recue_le")), analyse, analyseeLe, rapprochement, rapprocheeLe));
+                }
+            }
+        });
+    }
+
+    /** La candidature dont l'offre a exactement ce texte : la même offre collée deux fois (RG-18). */
+    public Optional<Numerotee> candidatureDeLOffre(String texteBrut) {
+        Optional<Long> numero = lecture(() -> {
+            try (PreparedStatement s = connexion.prepareStatement("SELECT c.numero FROM offre o "
+                    + "JOIN candidature c ON c.id = o.candidature_id WHERE o.texte_brut = ? ORDER BY c.numero LIMIT 1")) {
+                s.setString(1, texteBrut);
+                try (ResultSet r = s.executeQuery()) {
+                    return r.next() ? Optional.of(r.getLong(1)) : Optional.empty();
+                }
+            }
+        });
+        return numero.flatMap(this::trouver);
     }
 
     /**
@@ -281,6 +365,7 @@ public final class Base implements AutoCloseable {
 
     private static final String CREATION = "CREATION";
     private static final String CHANGEMENT_ETAPE = "CHANGEMENT_ETAPE";
+    private static final String ECARTEMENT = "ECARTEMENT";
     private static final String REOUVERTURE = "REOUVERTURE";
     private static final String RELANCE = "RELANCE";
     private static final String ENTRETIEN_PASSE = "ENTRETIEN_PASSE";
@@ -303,6 +388,7 @@ public final class Base implements AutoCloseable {
         return switch (e) {
             case Evenement.Creation x -> new Ligne(CREATION, x.date(), x.etape(), null, null, null, null);
             case Evenement.ChangementEtape x -> new Ligne(CHANGEMENT_ETAPE, x.date(), x.vers(), null, null, null, null);
+            case Evenement.Ecartement x -> new Ligne(ECARTEMENT, x.date(), null, null, null, null, x.motif());
             case Evenement.Reouverture x -> new Ligne(REOUVERTURE, x.date(), x.vers(), null, null, null, null);
             case Evenement.RelanceEffectuee x -> Ligne.de(RELANCE, x.date());
             case Evenement.EntretienPasse x -> new Ligne(ENTRETIEN_PASSE, x.date(), null, x.type(), null, null, null);
@@ -320,6 +406,7 @@ public final class Base implements AutoCloseable {
         return switch (type) {
             case CREATION -> new Evenement.Creation(date, Etape.valueOf(r.getString("etape")));
             case CHANGEMENT_ETAPE -> new Evenement.ChangementEtape(date, Etape.valueOf(r.getString("etape")));
+            case ECARTEMENT -> new Evenement.Ecartement(date, r.getString("texte"));
             case REOUVERTURE -> new Evenement.Reouverture(date, Etape.valueOf(r.getString("etape")));
             case RELANCE -> new Evenement.RelanceEffectuee(date);
             case ENTRETIEN_PASSE -> new Evenement.EntretienPasse(date, TypeEntretien.valueOf(r.getString("entretien")));
@@ -333,6 +420,112 @@ public final class Base implements AutoCloseable {
     }
 
     // --- interne ---
+
+    private long insererCandidature(Candidature c) throws SQLException {
+        long numero;
+        try (PreparedStatement s = connexion.prepareStatement(
+                "INSERT INTO candidature (id, entreprise, poste, etape) VALUES (?, ?, ?, ?) RETURNING numero")) {
+            s.setString(1, c.id().toString());
+            s.setString(2, c.entreprise());
+            s.setString(3, c.poste());
+            s.setString(4, c.etape().name());
+            try (ResultSet r = s.executeQuery()) {
+                r.next();
+                numero = r.getLong(1);
+            }
+        }
+        insererEvenements(c, 0);
+        return numero;
+    }
+
+    private void ecrireAnalyse(UUID candidature, OffreAnalysee a, Instant le) throws SQLException {
+        String id = candidature.toString();
+        executer("DELETE FROM exigence_fait WHERE candidature_id = ?", id);
+        executer("DELETE FROM exigence WHERE candidature_id = ?", id);
+        executer("DELETE FROM offre_mission WHERE candidature_id = ?", id);
+        int modifiees = executer("UPDATE offre SET analysee_le = ?, poste = ?, entreprise = ?, lieu = ?, contrat = ?, "
+                + "debut = ?, duree = ?, niveau = ?, rapprochee_le = NULL, note = NULL, justification = NULL "
+                + "WHERE candidature_id = ?", le.toString(), a.poste(), a.entreprise(), a.lieu(), a.contrat(),
+                a.debut(), a.duree(), a.niveau(), id);
+        if (modifiees != 1) {
+            throw new ErreurStockage("Aucune offre pour la candidature " + candidature + ".");
+        }
+        for (int rang = 0; rang < a.missions().size(); rang++) {
+            executer("INSERT INTO offre_mission (candidature_id, rang, texte) VALUES (?, ?, ?)", id, rang, a.missions().get(rang));
+        }
+        for (int rang = 0; rang < a.exigences().size(); rang++) {
+            Exigence e = a.exigences().get(rang);
+            executer("INSERT INTO exigence (candidature_id, rang, libelle, obligatoire) VALUES (?, ?, ?, ?)",
+                    id, rang, e.libelle(), e.obligatoire() ? 1 : 0);
+        }
+    }
+
+    private List<String> missions(UUID candidature) throws SQLException {
+        List<String> missions = new ArrayList<>();
+        try (PreparedStatement s = connexion.prepareStatement(
+                "SELECT texte FROM offre_mission WHERE candidature_id = ? ORDER BY rang")) {
+            s.setString(1, candidature.toString());
+            try (ResultSet r = s.executeQuery()) {
+                while (r.next()) {
+                    missions.add(r.getString(1));
+                }
+            }
+        }
+        return missions;
+    }
+
+    private List<Exigence> exigences(UUID candidature) throws SQLException {
+        List<Exigence> exigences = new ArrayList<>();
+        try (PreparedStatement s = connexion.prepareStatement(
+                "SELECT libelle, obligatoire FROM exigence WHERE candidature_id = ? ORDER BY rang")) {
+            s.setString(1, candidature.toString());
+            try (ResultSet r = s.executeQuery()) {
+                while (r.next()) {
+                    exigences.add(new Exigence(r.getString(1), r.getInt(2) == 1));
+                }
+            }
+        }
+        return exigences;
+    }
+
+    private List<Couverture> couvertures(UUID candidature, List<Exigence> exigences) throws SQLException {
+        List<Couverture> couvertures = new ArrayList<>();
+        for (int rang = 0; rang < exigences.size(); rang++) {
+            String justification = "";
+            List<String> faits = new ArrayList<>();
+            try (PreparedStatement s = connexion.prepareStatement(
+                    "SELECT justification FROM exigence WHERE candidature_id = ? AND rang = ?")) {
+                lier(s, candidature.toString(), rang);
+                try (ResultSet r = s.executeQuery()) {
+                    if (r.next() && r.getString(1) != null) {
+                        justification = r.getString(1);
+                    }
+                }
+            }
+            try (PreparedStatement s = connexion.prepareStatement(
+                    "SELECT fait_id FROM exigence_fait WHERE candidature_id = ? AND rang = ? ORDER BY rowid")) {
+                lier(s, candidature.toString(), rang);
+                try (ResultSet r = s.executeQuery()) {
+                    while (r.next()) {
+                        faits.add(r.getString(1));
+                    }
+                }
+            }
+            couvertures.add(new Couverture(exigences.get(rang), faits, justification));
+        }
+        return couvertures;
+    }
+
+    private int executer(String sql, Object... parametres) throws SQLException {
+        try (PreparedStatement s = connexion.prepareStatement(sql)) {
+            lier(s, parametres);
+            return s.executeUpdate();
+        }
+    }
+
+    private static Optional<Instant> instant(String texte) {
+        return texte == null ? Optional.empty() : Optional.of(Instant.parse(texte));
+    }
 
     private void insererEvenements(Candidature c, int depuis) throws SQLException {
         try (PreparedStatement s = connexion.prepareStatement(

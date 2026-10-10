@@ -139,6 +139,58 @@ class CandidatureTest {
     }
 
     @Nested
+    class Ecartement {
+
+        @Test
+        void ecarter_une_offre_reperee_garde_son_motif_dans_le_journal() {
+            Candidature c = repereeLe(J0).ecarter("  Trop loin de Lyon ", J0.plusDays(2), AUJOURDHUI);
+
+            assertThat(c.etape()).isEqualTo(Etape.ECARTEE);
+            assertThat(c.journal()).last().isEqualTo(new Evenement.Ecartement(J0.plusDays(2), "Trop loin de Lyon"));
+            assertThat(c.dateEntreeEtape()).isEqualTo(J0.plusDays(2));
+        }
+
+        @Test
+        void une_offre_a_preparer_peut_encore_etre_ecartee() {
+            Candidature c = repereeLe(J0).avancer(Etape.A_PREPARER, J0, AUJOURDHUI).ecarter("Poste pourvu", J0, AUJOURDHUI);
+            assertThat(c.etape()).isEqualTo(Etape.ECARTEE);
+        }
+
+        @Test
+        void ecarter_sans_motif_est_refuse() {
+            assertThatThrownBy(() -> repereeLe(J0).ecarter(" ", J0, AUJOURDHUI))
+                    .isInstanceOf(RefusMetier.class)
+                    .hasMessageContaining("motif");
+        }
+
+        @Test
+        void avancer_vers_ecartee_est_refuse_parce_qu_il_faut_un_motif() {
+            assertThatThrownBy(() -> repereeLe(J0).avancer(Etape.ECARTEE, J0, AUJOURDHUI))
+                    .isInstanceOf(RefusMetier.class)
+                    .hasMessageContaining("motif");
+        }
+
+        @Test
+        void une_candidature_envoyee_ne_s_ecarte_pas() {
+            assertThatThrownBy(() -> envoyeeLe(J0).ecarter("Finalement non", J0, AUJOURDHUI))
+                    .isInstanceOf(RefusMetier.class)
+                    .hasMessageContaining("envoyée");
+        }
+
+        @Test
+        void on_n_entre_pas_dans_le_suivi_deja_ecarte() {
+            assertThatThrownBy(() -> Candidature.creer("Acme", "Stage", Etape.ECARTEE, J0, AUJOURDHUI))
+                    .isInstanceOf(RefusMetier.class);
+        }
+
+        @Test
+        void une_offre_ecartee_se_rouvre_explicitement() {
+            Candidature c = repereeLe(J0).ecarter("Hésitation", J0, AUJOURDHUI).reouvrir(Etape.REPEREE, J0.plusDays(1), AUJOURDHUI);
+            assertThat(c.etape()).isEqualTo(Etape.REPEREE);
+        }
+    }
+
+    @Nested
     class EtapesTerminales {
 
         Candidature refusee = envoyeeLe(J0).avancer(Etape.REFUSEE, J0.plusDays(3), AUJOURDHUI);

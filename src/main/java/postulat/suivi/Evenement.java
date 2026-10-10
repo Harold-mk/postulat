@@ -29,6 +29,20 @@ public sealed interface Evenement {
         }
     }
 
+    /**
+     * Décision de ne pas postuler (UC-06), avec son motif : c'est la matière qui dira plus tard quelles
+     * lacunes reviennent le plus dans les offres visées (CA-10.6). Un écartement sans motif n'existe pas.
+     */
+    record Ecartement(LocalDate date, String motif) implements Evenement {
+        public Ecartement {
+            Objects.requireNonNull(date);
+            if (motif == null || motif.isBlank()) {
+                throw new RefusMetier("Écarter une offre demande un motif : il servira à savoir ce qui manque le plus souvent.");
+            }
+            motif = motif.strip();
+        }
+    }
+
     /** Sortie explicite d'une étape terminale (CA-6.5). L'historique antérieur reste intact. */
     record Reouverture(LocalDate date, Etape vers) implements Evenement {
         public Reouverture {

@@ -28,7 +28,14 @@ final class Conversions {
     private static final DateTimeFormatter FRANCAIS =
             DateTimeFormatter.ofPattern("d/M/uuuu").withResolverStyle(ResolverStyle.STRICT);
 
+    /** Marque d'ordre des octets : invisible, ajoutée par certains éditeurs et par PowerShell. */
+    static final char MARQUE_D_ORDRE = '﻿';
+
     private Conversions() {}
+
+    static String sansMarqueDOrdre(String texte) {
+        return !texte.isEmpty() && texte.charAt(0) == MARQUE_D_ORDRE ? texte.substring(1) : texte;
+    }
 
     static void enregistrer(CommandLine ligne, Clock horloge) {
         ligne.registerConverter(Etape.class, parLibelle(Etape.class, Etape::libelle, "étape inconnue"));

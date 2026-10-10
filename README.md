@@ -16,7 +16,8 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 3 | Profil, gabarit, validation, vérification de traçabilité (UC-01, UC-03) | ✅ |
 | 4 | Note ATS déterministe | ✅ |
 | 5 | Modèle de langage : adaptateur Anthropic, coût mesuré et journalisé, double de test | ✅ |
-| 6–8 | Analyse d'offre, import d'un CV existant (UC-02), CV ciblé, lettre, évaluation | à venir |
+| 6 | Analyse d'offre, rapprochement avec le profil, note d'adéquation, arbitrage (UC-05, UC-06) | ✅ |
+| 7–8 | Rendu sur une page, CV ciblé, lettre, évaluation, phrases versées au profil (UC-04), import d'un CV (UC-02) | à venir |
 | 9 | Interface de bureau | à venir |
 
 ## Ce qui fonctionne aujourd'hui
@@ -65,9 +66,17 @@ La production de documents a ses fondations, sans modèle de langage pour l'inst
   figure tel quel dans le texte extrait du document, casse et accents mis à part — « PowerBI » ne
   vaut pas « Power BI ». Une exigence obligatoire pèse deux fois une souhaitée ; la note dit aussi
   quelles obligatoires manquent, celles qu'un filtre strict tiendrait pour éliminatoires.
-- **Le modèle de langage est branché**, sans encore servir à une tâche : une seule interface,
+- **L'analyse d'offre.** Le texte d'une annonce, conservé tel quel, devient une fiche — poste,
+  entreprise, contrat, missions, exigences obligatoires et souhaitées reprises des mots de l'offre.
+  Puis chaque exigence est rapprochée du profil : couverte, avec les faits qui la démontrent, ou
+  lacune, avec ce qui manque ; et une note d'adéquation justifiée précède toute génération. Le
+  rapprochement est un jugement du modèle, mais il ne peut citer que des faits du profil : sinon il
+  est refusé en entier. La décision reste au candidat — poursuivre, ou écarter avec un motif ; sans
+  décision, l'offre reste un brouillon du tableau de bord. Modèle indisponible ? L'offre est
+  conservée, analysable plus tard. Profil incomplet ? Elle est analysée, et le rapprochement attend.
+- **Le modèle de langage est branché** derrière une seule interface,
   `Modele`, et son adaptateur vers l'API Anthropic. Le modèle répond dans une forme imposée (sorties
-  structurées), la partie stable des demandes est mise en cache, et un refus des classifieurs de
+  structurées), la partie stable des demandes — consignes et profil — est mise en cache, et un refus des classifieurs de
   sûreté est rejoué côté serveur quand le modèle le permet. Chaque appel, réussi ou non, est
   journalisé dans la base avec ses jetons, son coût et de quoi le reconstituer ; le coût s'affiche
   par candidature et se cumule par mois. Deux gammes, comme le prévoit le cadrage : économique
@@ -90,8 +99,9 @@ java -jar target/postulat.jar actions
 | `actions` | ce qu'il y a à faire aujourd'hui, le plus urgent d'abord |
 | `liste [--toutes] [--etape E] [--entreprise T]` | les candidatures, regroupées par entreprise |
 | `voir N` | tout sur la candidature n° N : contacts, historique, échéances |
-| `ajouter ENTREPRISE POSTE [--etape E] [--le DATE]` | une candidature, à l'étape atteinte et à sa date réelle |
-| `avancer N ETAPE` · `rouvrir N ETAPE` | changer d'étape, ou sortir d'une étape terminale |
+| `offre ajouter FICHIER` · `offre analyser N` | soumettre le texte d'une offre : analyse, rapprochement, note ; ou refaire l'analyse plus tard |
+| `ajouter ENTREPRISE POSTE [--etape E] [--le DATE]` | une candidature déposée hors de l'outil, à l'étape atteinte et à sa date réelle |
+| `avancer N ETAPE` · `ecarter N MOTIF` · `rouvrir N ETAPE` | changer d'étape ; ne pas postuler, en disant pourquoi ; sortir d'une étape terminale |
 | `relancer N` | enregistrer une relance faite par vous ; postulat n'envoie rien |
 | `planifier N JOUR --type rh\|technique\|final` | un entretien fixé, même à venir |
 | `entretien N --type T [--compte-rendu TEXTE]` | un entretien passé |
@@ -104,6 +114,10 @@ java -jar target/postulat.jar actions
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
 aujourd'hui. Les étapes s'écrivent avec ou sans accents : `offre reçue`, `offre_recue`.
 `java -jar target/postulat.jar COMMANDE --aide` détaille chaque commande.
+
+Une offre se donne par un fichier texte : copier l'annonce, la coller dans le Bloc-notes, enregistrer
+(UTF-8 par défaut). `offre ajouter -` la lit sur l'entrée standard, mais Windows PowerShell 5.1 y perd
+les accents sauf après `$OutputEncoding = [Text.Encoding]::UTF8` : le fichier est plus sûr.
 
 Les délais de relance, l'objectif hebdomadaire et le modèle de chaque gamme se règlent dans un
 fichier `postulat.properties` placé dans le répertoire des données. Seuls les modèles dont le tarif
@@ -133,7 +147,7 @@ Volontairement simple : cinq paquets rangés par sujet.
 ```
 postulat/
   suivi/        pipeline, journal, échéances, tableau de bord      Java pur
-  production/   profil, faits, traçabilité                         Java pur
+  production/   profil, offre, rapprochement, traçabilité, ATS     Java pur
   stockage/     SQLite en JDBC nu, migrations, sauvegardes,        sqlite-jdbc
                 lecture du profil YAML                             snakeyaml-engine
   ia/           interface Modele, client Anthropic, journal        anthropic-java

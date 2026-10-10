@@ -124,7 +124,8 @@ final class Saisies {
     static final class Avancer extends Saisie {
 
         @Parameters(index = "1", paramLabel = "ETAPE",
-                description = "Étape atteinte : à_préparer, prête, envoyée, entretien, offre_reçue, acceptée, refusée, sans_suite, retirée, écartée.")
+                description = "Étape atteinte : à_préparer, prête, envoyée, entretien, offre_reçue, acceptée, refusée, sans_suite, "
+                        + "retirée. Pour écarter une offre, avec son motif : postulat ecarter.")
         Etape vers;
 
         @Override
@@ -142,6 +143,24 @@ final class Saisies {
             return vers == Etape.ENTRETIEN
                     ? Optional.of("Pour fixer la date de l'entretien : postulat planifier " + numero + " JOUR --type rh|technique|final")
                     : Optional.empty();
+        }
+    }
+
+    @Command(name = "ecarter", description = "Décide de ne pas postuler, en disant pourquoi ; l'offre et son analyse restent "
+            + "conservées (UC-06).")
+    static final class Ecarter extends Saisie {
+
+        @Parameters(index = "1..*", paramLabel = "MOTIF", description = "Pourquoi : il servira à savoir ce qui manque le plus souvent.")
+        List<String> mots;
+
+        @Override
+        Candidature appliquer(Candidature c, LocalDate date, LocalDate aujourdhui) {
+            return c.ecarter(String.join(" ", mots), date, aujourdhui);
+        }
+
+        @Override
+        String bilan(Candidature apres, LocalDate date) {
+            return "écartée le " + Affichage.date(date) + " : " + String.join(" ", mots).strip();
         }
     }
 

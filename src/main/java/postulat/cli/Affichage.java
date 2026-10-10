@@ -1,11 +1,20 @@
 package postulat.cli;
 
+import java.io.PrintWriter;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import postulat.ia.Gamme;
+import postulat.production.Couverture;
+import postulat.production.Exigence;
+import postulat.production.OffreAnalysee;
+import postulat.production.Rapprochement;
+import postulat.stockage.Offre;
 import postulat.suivi.Canal;
 import postulat.suivi.Candidature;
 import postulat.suivi.Echeance;
@@ -22,6 +31,62 @@ final class Affichage {
 
     static String date(LocalDate jour) {
         return DATE.format(jour);
+    }
+
+    /**
+     * L'offre telle qu'on la lit pour décider (UC-06) : sa fiche, chaque exigence couverte ou en lacune
+     * avec sa justification, la note d'adéquation. Ce qui manque encore est dit, pas tu.
+     */
+    static void offre(PrintWriter out, Offre offre, ZoneId zone, long numero) {
+        out.println("Offre (texte conservé : " + offre.texteBrut().length() + " caractères, reçu le "
+                + date(LocalDate.ofInstant(offre.recueLe(), zone)) + ")");
+        if (offre.analyse().isEmpty()) {
+            out.println("  Non analysée. Pour l'analyser : postulat offre analyser " + numero);
+            return;
+        }
+        OffreAnalysee a = offre.analyse().get();
+        String fiche = Stream.of(
+                        champ("Poste", a.poste()), champ("Entreprise", a.entreprise()), champ("Lieu", a.lieu()),
+                        champ("Contrat", a.contrat()), champ("Début", a.debut()), champ("Durée", a.duree()),
+                        champ("Niveau", a.niveau()))
+                .filter(c -> !c.isEmpty())
+                .collect(Collectors.joining(" · "));
+        out.println("  " + fiche);
+        if (!a.missions().isEmpty()) {
+            out.println("  Missions");
+            a.missions().forEach(m -> out.println("    - " + m));
+        }
+        if (a.exigences().isEmpty()) {
+            out.println("  Aucune exigence relevée.");
+            return;
+        }
+        out.println("  Exigences ([O] obligatoire, [S] souhaitée)");
+        if (offre.rapprochement().isEmpty()) {
+            a.exigences().forEach(e -> out.println("    " + marque(e) + " " + e.libelle()));
+            out.println("  Rapprochement avec le profil non fait. Profil prêt ? postulat offre analyser " + numero);
+            return;
+        }
+        Rapprochement r = offre.rapprochement().get();
+        for (Couverture c : r.couvertures()) {
+            out.println("    " + (c.couverte() ? "couverte " : "lacune   ") + marque(c.exigence()) + " " + c.exigence().libelle()
+                    + (c.couverte() ? " — " + String.join(", ", c.faits()) : "")
+                    + (c.justification().isEmpty() ? "" : " : " + c.justification()));
+        }
+        out.println("  Adéquation : " + r.note() + "/100. " + r.justification());
+    }
+
+    /** UC-06 : la décision revient au candidat ; sans décision, l'offre reste un brouillon (A1). */
+    static void decision(PrintWriter out, long numero) {
+        out.println("Décision : postulat avancer " + numero + " à_préparer · postulat ecarter " + numero
+                + " MOTIF · sans décision, l'offre reste un brouillon du tableau de bord.");
+    }
+
+    private static String champ(String nom, String valeur) {
+        return valeur.isBlank() ? "" : nom + " : " + valeur;
+    }
+
+    private static String marque(Exigence e) {
+        return e.obligatoire() ? "[O]" : "[S]";
     }
 
     /** « 0,0110 $ » ; un coût non nul trop petit pour quatre décimales ne s'affiche pas comme nul. */
@@ -85,6 +150,7 @@ final class Affichage {
         return switch (e) {
             case Evenement.Creation c -> "créée à l'étape " + etape(c.etape());
             case Evenement.ChangementEtape c -> "passée à " + etape(c.vers());
+            case Evenement.Ecartement ec -> "écartée : " + ec.motif();
             case Evenement.Reouverture r -> "rouverte à " + etape(r.vers());
             case Evenement.RelanceEffectuee r -> "relance effectuée";
             case Evenement.EntretienPasse ep -> "entretien " + entretien(ep.type()) + " passé";

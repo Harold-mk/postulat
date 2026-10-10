@@ -42,8 +42,10 @@ import postulat.suivi.RefusMetier;
             Consultations.Actions.class,
             Consultations.Liste.class,
             Consultations.Voir.class,
+            Offres.CommandeOffre.class,
             Saisies.Ajouter.class,
             Saisies.Avancer.class,
+            Saisies.Ecarter.class,
             Saisies.Rouvrir.class,
             Saisies.Relancer.class,
             Saisies.Planifier.class,
@@ -94,8 +96,24 @@ public final class Postulat implements Callable<Integer> {
     }
 
     public static void main(String[] arguments) {
-        BufferedReader clavier = new BufferedReader(new InputStreamReader(System.in));
+        BufferedReader clavier = sansMarqueDOrdre(new BufferedReader(new InputStreamReader(System.in)));
         System.exit(ligneDeCommande(Clock.systemDefaultZone(), clavier, MODELE_ANTHROPIC).execute(arguments));
+    }
+
+    /**
+     * PowerShell fait précéder ce qu'il envoie à un programme d'une marque d'ordre des octets (U+FEFF),
+     * invisible : sans ce retrait, elle se collerait au nom d'une entreprise ou à un « oui ».
+     */
+    static BufferedReader sansMarqueDOrdre(BufferedReader lecteur) {
+        try {
+            lecteur.mark(1);
+            if (lecteur.read() != Conversions.MARQUE_D_ORDRE) {
+                lecteur.reset();
+            }
+            return lecteur;
+        } catch (java.io.IOException e) {
+            return lecteur;
+        }
     }
 
     static CommandLine ligneDeCommande(Clock horloge, BufferedReader entree) {

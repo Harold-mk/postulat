@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -13,6 +14,7 @@ import picocli.CommandLine.Option;
 import postulat.stockage.Base;
 import postulat.stockage.CoutModele;
 import postulat.stockage.Numerotee;
+import postulat.stockage.Offre;
 import postulat.stockage.Reglages;
 import postulat.suivi.Candidature;
 import postulat.suivi.Contact;
@@ -201,10 +203,12 @@ final class Consultations {
             Numerotee n;
             List<Contact> contacts;
             CoutModele cout;
+            Optional<Offre> offre;
             try (Base base = ouvrirBase()) {
                 n = trouver(base);
                 contacts = base.contacts(n.candidature().id());
                 cout = base.coutModele(n.candidature().id());
+                offre = base.offre(n.candidature().id());
             }
             Candidature c = n.candidature();
             PrintWriter out = sortie();
@@ -217,6 +221,12 @@ final class Consultations {
             // EN-5 : le coût par candidature s'affiche.
             out.println("Modèle de langage : " + (cout.appels() == 0 ? "aucun appel"
                     : Affichage.appels(cout.appels()) + ", " + Affichage.dollars(cout.coutMicroDollars())));
+            out.println();
+            if (offre.isPresent()) {
+                Affichage.offre(out, offre.get(), racine().horloge().getZone(), n.numero());
+            } else {
+                out.println("Offre : aucune, candidature saisie à la main.");
+            }
             out.println();
             out.println("Contacts");
             if (contacts.isEmpty()) {
