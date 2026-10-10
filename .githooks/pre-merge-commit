@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#
+# postulat — une fusion sans conflit ne passe PAS par pre-commit : git appelle
+# pre-merge-commit à sa place. Sans ce fichier, fusionner une branche contenant un
+# profil ou une clé serait accepté sans un mot.
+
+set -uo pipefail
+
+CROCHETS=$(dirname -- "$0")
+
+bash "$CROCHETS/identite.sh" configuree || exit 1
+exec bash "$CROCHETS/controler-fuites.sh" index

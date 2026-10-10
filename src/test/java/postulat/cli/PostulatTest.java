@@ -209,14 +209,14 @@ class PostulatTest {
             reussi("ajouter", "Acme", "Stage", "--etape", "envoyée", "--le", "2026-10-01");
             reussi("interaction", "1", "appel", "--notes", "La RH a reçu le dossier", "--le", "2026-10-05");
             reussi("retour-promis", "1", "2026-10-15", "--le", "2026-10-05");
-            reussi("contact", "1", "Marie Curie", "--role", "RH", "--coordonnees", "marie@acme.fr");
+            reussi("contact", "1", "Marie Curie", "--role", "RH", "--coordonnees", "marie@acme.test");
             reussi("noter", "1", "Rappeler", "après", "le", "15");
 
             assertThat(reussi("voir", "1").sortie())
                     .contains("#1 Acme — Stage")
                     .contains("Étape : envoyée, depuis le 01/10/2026 (il y a 9 jours)")
                     .contains("Dossier : aucun dossier rattaché.")
-                    .contains("Marie Curie · RH · marie@acme.fr")
+                    .contains("Marie Curie · RH · marie@acme.test")
                     .contains("05/10/2026  appel : La RH a reçu le dossier")
                     .contains("05/10/2026  retour promis pour le 15/10/2026")
                     .contains("10/10/2026  note : Rappeler après le 15")

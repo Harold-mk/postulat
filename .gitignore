@@ -1,20 +1,75 @@
+# postulat — ce qui ne doit jamais entrer dans un dépôt public.
+#
+# Les données de l'application vivent hors du projet, dans %LOCALAPPDATA%\postulat
+# (EN-2). Ce fichier est la deuxième barrière ; la troisième est .githooks/, qui
+# contrôle aussi le contenu des fichiers et l'adresse inscrite dans les commits.
+
 # Construction
 target/
-
-# IntelliJ
-.idea/
-*.iml
 out/
+*.class
 
-# Systèmes
-.DS_Store
-Thumbs.db
-
-# Données personnelles : elles vivent hors du projet (%LOCALAPPDATA%\postulat).
-# Ces lignes ne sont qu'un filet de sécurité si une copie atterrit ici par erreur.
+# Données de l'application, si une copie atterrit ici par erreur : base SQLite et ses
+# fichiers de transaction, sauvegardes, réglages locaux.
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+postulat-*.zip
+postulat.properties
+*.provisoire
+
+# Profil du candidat : faits personnels, la donnée la plus sensible du projet.
 profil*.yaml
 profil*.yml
+profil*.json
+
+# Répertoires de données, de candidatures et de sauvegardes.
+/donnees/
+/data/
+/candidatures/
+/sauvegardes/
+/dossiers/
+
+# Documents produits ou importés : CV, lettres, offres. Seul docs/ en accueille ; le
+# crochet y refuse tout fichier nommé cv, lettre, motivation ou candidature.
+*.pdf
+*.docx
+*.doc
+*.odt
+*.rtf
+!docs/**/*.pdf
+!docs/**/*.docx
+!docs/**/*.odt
+
+# Secrets.
 .env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.kdbx
+cle-api*
+cle_api*
+
+# Réglages locaux d'outils : ils portent des chemins et des permissions de la machine.
+# Ancrés à la racine, sans quoi « bin/ » ignorerait aussi un paquet Java nommé bin.
+/.idea/
+*.iml
+/.vscode/
+/bin/
+/.claude/settings.local.json
+CLAUDE.local.md
+
+# Systèmes et journaux.
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+*~

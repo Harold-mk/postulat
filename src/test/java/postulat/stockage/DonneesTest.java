@@ -214,8 +214,8 @@ class DonneesTest {
         @Test
         void sous_windows_les_donnees_vont_dans_localappdata() {
             Path maison = Path.of("maison");
-            assertThat(Donnees.repertoireParDefaut(Map.of("LOCALAPPDATA", "C:/Users/x/AppData/Local"), "Windows 11", maison))
-                    .isEqualTo(Path.of("C:/Users/x/AppData/Local", "postulat"));
+            assertThat(Donnees.repertoireParDefaut(Map.of("LOCALAPPDATA", "L:/AppData/Local"), "Windows 11", maison))
+                    .isEqualTo(Path.of("L:/AppData/Local", "postulat"));
             assertThat(Donnees.repertoireParDefaut(Map.of(), "Windows 11", maison))
                     .isEqualTo(maison.resolve("AppData").resolve("Local").resolve("postulat"));
         }

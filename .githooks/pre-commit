@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#
+# postulat — avant chaque commit : l'identité qu'il portera, puis ce qu'il contient.
+#
+# Installation, une fois après le clonage :  git config core.hooksPath .githooks
+
+set -uo pipefail
+
+CROCHETS=$(dirname -- "$0")
+
+bash "$CROCHETS/identite.sh" configuree || exit 1
+bash "$CROCHETS/controler-fuites.sh" index || exit 1

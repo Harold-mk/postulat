@@ -1,0 +1,20 @@
+# Fins de ligne. Le dépôt stocke du LF ; Git for Windows rend du CRLF à l'extraction.
+
+* text=auto
+
+# Lus par bash, y compris sous Windows : un CRLF les casserait (« $'\r': command not found »).
+mvnw           text eol=lf
+*.sh           text eol=lf
+.githooks/*    text eol=lf
+
+# Lus par cmd.exe : toujours en CRLF.
+mvnw.cmd       text eol=crlf
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+
+# Binaires : aucune conversion.
+*.jar          binary
+*.zip          binary
+*.png          binary
+*.jpg          binary
+*.pdf          binary

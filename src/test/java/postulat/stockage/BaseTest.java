@@ -152,11 +152,11 @@ class BaseTest {
     void les_contacts_sont_rattaches_dans_l_ordre_de_leur_ajout() {
         Candidature c = envoyee("Acme");
         base.creer(c);
-        base.ajouterContact(c.id(), new Contact("Marie Curie", "RH", "marie@acme.fr"));
+        base.ajouterContact(c.id(), new Contact("Marie Curie", "RH", "marie@acme.test"));
         base.ajouterContact(c.id(), new Contact("Pierre Curie", "", ""));
 
         assertThat(base.contacts(c.id())).containsExactly(
-                new Contact("Marie Curie", "RH", "marie@acme.fr"), new Contact("Pierre Curie", "", ""));
+                new Contact("Marie Curie", "RH", "marie@acme.test"), new Contact("Pierre Curie", "", ""));
         assertThat(base.contacts(envoyee("Autre").id())).isEmpty();
     }
 

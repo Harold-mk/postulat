@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#
+# postulat — dernier filet avant publication.
+#
+# Deux contrôles. L'identité de chaque commit envoyé, parce qu'un commit fait avec
+# --no-verify ou avant l'installation des crochets peut porter une adresse personnelle.
+# Puis l'ARBRE COMPLET, non le delta : git rebase, cherry-pick, revert et stash
+# n'appellent aucun crochet de commit, donc un fichier interdit peut être suivi sans que
+# pre-commit l'ait jamais vu.
+
+set -uo pipefail
+
+CROCHETS=$(dirname -- "$0")
+
+# Git fournit sur l'entrée : <réf locale> <sha local> <réf distante> <sha distant>.
+while read -r _ sha_local _ sha_distant; do
+    case "$sha_local" in
+        *[!0]*) ;;
+        *) continue ;; # suppression d'une branche distante : rien n'est envoyé
+    esac
+    case "$sha_distant" in
+        *[!0]*) bash "$CROCHETS/identite.sh" commits "$sha_distant..$sha_local" || exit 1 ;;
+        *) bash "$CROCHETS/identite.sh" commits "$sha_local" --not --remotes || exit 1 ;;
+    esac
+done
+
+exec bash "$CROCHETS/controler-fuites.sh" arbre
