@@ -1,0 +1,20 @@
+# Construction
+target/
+
+# IntelliJ
+.idea/
+*.iml
+out/
+
+# Systèmes
+.DS_Store
+Thumbs.db
+
+# Données personnelles : elles vivent hors du projet (%LOCALAPPDATA%\postulat).
+# Ces lignes ne sont qu'un filet de sécurité si une copie atterrit ici par erreur.
+*.db
+*.sqlite
+*.sqlite3
+profil*.yaml
+profil*.yml
+.env
