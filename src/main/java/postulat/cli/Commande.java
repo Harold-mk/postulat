@@ -10,8 +10,11 @@ import java.util.stream.Collectors;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Spec;
+import postulat.ia.Modele;
+import postulat.ia.ModeleJournalise;
 import postulat.stockage.Base;
 import postulat.stockage.Numerotee;
+import postulat.stockage.Reglages;
 
 /** Socle des sous-commandes : accès aux données, au jour courant et à la sortie. */
 abstract class Commande implements Callable<Integer> {
@@ -34,6 +37,11 @@ abstract class Commande implements Callable<Integer> {
 
     Base ouvrirBase() {
         return racine().donnees().ouvrirBase();
+    }
+
+    /** Le modèle des réglages, dont chaque appel s'inscrit au journal de la base (EN-5, EN-12). */
+    Modele modele(Base base, Reglages reglages) {
+        return new ModeleJournalise(racine().fabriqueModele().apply(reglages), base::journaliser, racine().horloge());
     }
 
     /** Numéro de chaque candidature, pour afficher les échéances que le domaine désigne par UUID. */

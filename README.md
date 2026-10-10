@@ -15,7 +15,8 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 2 | Stockage SQLite, ligne de commande, tableau de bord, sauvegarde (UC-10 à UC-18) | ✅ |
 | 3 | Profil, gabarit, validation, vérification de traçabilité (UC-01, UC-03) | ✅ |
 | 4 | Note ATS déterministe | ✅ |
-| 5–8 | Modèle de langage, import d'un CV existant (UC-02), CV ciblé, lettre, évaluation | à venir |
+| 5 | Modèle de langage : adaptateur Anthropic, coût mesuré et journalisé, double de test | ✅ |
+| 6–8 | Analyse d'offre, import d'un CV existant (UC-02), CV ciblé, lettre, évaluation | à venir |
 | 9 | Interface de bureau | à venir |
 
 ## Ce qui fonctionne aujourd'hui
@@ -64,6 +65,15 @@ La production de documents a ses fondations, sans modèle de langage pour l'inst
   figure tel quel dans le texte extrait du document, casse et accents mis à part — « PowerBI » ne
   vaut pas « Power BI ». Une exigence obligatoire pèse deux fois une souhaitée ; la note dit aussi
   quelles obligatoires manquent, celles qu'un filtre strict tiendrait pour éliminatoires.
+- **Le modèle de langage est branché**, sans encore servir à une tâche : une seule interface,
+  `Modele`, et son adaptateur vers l'API Anthropic. Le modèle répond dans une forme imposée (sorties
+  structurées), la partie stable des demandes est mise en cache, et un refus des classifieurs de
+  sûreté est rejoué côté serveur quand le modèle le permet. Chaque appel, réussi ou non, est
+  journalisé dans la base avec ses jetons, son coût et de quoi le reconstituer ; le coût s'affiche
+  par candidature et se cumule par mois. Deux gammes, comme le prévoit le cadrage : économique
+  (`claude-haiku-5-5`) pour l'extraction, capable (`claude-opus-5-5`) pour la rédaction et le
+  jugement. Les tests n'appellent jamais l'API : un faux serveur local et un faux modèle en tiennent
+  lieu.
 
 ## Utilisation
 
@@ -89,19 +99,32 @@ java -jar target/postulat.jar actions
 | `interaction N courriel\|appel [--notes TEXTE]` · `contact N NOM` · `noter N TEXTE` | la mémoire des échanges |
 | `sauvegarder` · `restaurer ARCHIVE` | archive datée ; retour à une archive après vérification |
 | `profil initialiser` · `profil verifier` | écrire le gabarit commenté du profil ; dire ce qui y manque, à la ligne près |
+| `modele essai [--gamme capable]` · `modele couts` | vérifier la clé d'API par un appel minuscule ; le cumul des coûts, mois par mois |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
 aujourd'hui. Les étapes s'écrivent avec ou sans accents : `offre reçue`, `offre_recue`.
 `java -jar target/postulat.jar COMMANDE --aide` détaille chaque commande.
 
-Les délais de relance et l'objectif hebdomadaire se règlent dans un fichier `postulat.properties`
-placé dans le répertoire des données :
+Les délais de relance, l'objectif hebdomadaire et le modèle de chaque gamme se règlent dans un
+fichier `postulat.properties` placé dans le répertoire des données. Seuls les modèles dont le tarif
+est connu sont acceptés, pour que leur coût reste mesurable :
 
 ```properties
 relance.delai.jours = 10
 relance.nombre = 2
 objectif.hebdomadaire = 30
+modele.economique = claude-haiku-5-5
+modele.capable = claude-opus-5-5
 ```
+
+### Clé d'API
+
+Le modèle de langage demande une clé de la Console Anthropic, approvisionnée en crédit :
+l'abonnement Claude ne donne pas accès à l'API. La clé se place dans la variable d'environnement
+`ANTHROPIC_API_KEY`, jamais dans un fichier du projet — sous Windows, *Paramètres › Système ›
+Informations système › Paramètres système avancés › Variables d'environnement*, puis un nouveau
+terminal. `postulat modele essai` vérifie la connexion pour une fraction de centime. Les crochets
+git refusent de toute façon un commit qui contiendrait une clé.
 
 ## Architecture
 
@@ -113,7 +136,7 @@ postulat/
   production/   profil, faits, traçabilité                         Java pur
   stockage/     SQLite en JDBC nu, migrations, sauvegardes,        sqlite-jdbc
                 lecture du profil YAML                             snakeyaml-engine
-  ia/           interface Modele + client Anthropic                              (itération 5)
+  ia/           interface Modele, client Anthropic, journal        anthropic-java
   cli/          ligne de commande                                  picocli
 ```
 

@@ -3,7 +3,9 @@ package postulat.cli;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 import java.util.Optional;
+import postulat.ia.Gamme;
 import postulat.suivi.Canal;
 import postulat.suivi.Candidature;
 import postulat.suivi.Echeance;
@@ -20,6 +22,25 @@ final class Affichage {
 
     static String date(LocalDate jour) {
         return DATE.format(jour);
+    }
+
+    /** « 0,0110 $ » ; un coût non nul trop petit pour quatre décimales ne s'affiche pas comme nul. */
+    static String dollars(long microDollars) {
+        if (microDollars > 0 && microDollars < 100) {
+            return "< 0,0001 $";
+        }
+        return String.format(Locale.FRANCE, "%.4f $", microDollars / 1_000_000.0);
+    }
+
+    static String appels(int n) {
+        return n + (n > 1 ? " appels" : " appel");
+    }
+
+    static String gamme(Gamme gamme) {
+        return switch (gamme) {
+            case ECONOMIQUE -> "économique";
+            case CAPABLE -> "capable";
+        };
     }
 
     static String jours(long n) {

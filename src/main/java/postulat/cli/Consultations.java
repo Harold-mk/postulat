@@ -11,6 +11,7 @@ import java.util.stream.Stream;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import postulat.stockage.Base;
+import postulat.stockage.CoutModele;
 import postulat.stockage.Numerotee;
 import postulat.stockage.Reglages;
 import postulat.suivi.Candidature;
@@ -199,9 +200,11 @@ final class Consultations {
             LocalDate aujourdhui = aujourdhui();
             Numerotee n;
             List<Contact> contacts;
+            CoutModele cout;
             try (Base base = ouvrirBase()) {
                 n = trouver(base);
                 contacts = base.contacts(n.candidature().id());
+                cout = base.coutModele(n.candidature().id());
             }
             Candidature c = n.candidature();
             PrintWriter out = sortie();
@@ -211,6 +214,9 @@ final class Consultations {
                     + Affichage.ilYA(c.dateEntreeEtape(), aujourdhui) + ")");
             // UC-12 A1 : l'absence de dossier se dit, elle ne se devine pas.
             out.println("Dossier : aucun dossier rattaché.");
+            // EN-5 : le coût par candidature s'affiche.
+            out.println("Modèle de langage : " + (cout.appels() == 0 ? "aucun appel"
+                    : Affichage.appels(cout.appels()) + ", " + Affichage.dollars(cout.coutMicroDollars())));
             out.println();
             out.println("Contacts");
             if (contacts.isEmpty()) {

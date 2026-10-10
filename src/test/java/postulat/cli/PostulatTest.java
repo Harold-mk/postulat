@@ -20,6 +20,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 import picocli.CommandLine.TypeConversionException;
+import postulat.ia.Demande;
+import postulat.ia.ErreurModele;
+import postulat.ia.FauxModele;
+import postulat.ia.Gamme;
 
 /** Tests de bout en bout : de vraies commandes, une vraie base dans un répertoire temporaire, un jour fixe. */
 class PostulatTest {
@@ -30,6 +34,9 @@ class PostulatTest {
     @TempDir
     Path dossier;
 
+    /** Toute commande qui demanderait le modèle reçoit ce faux : aucun appel réel, aucun coût. */
+    final FauxModele faux = new FauxModele();
+
     record Resultat(int code, String sortie, String erreurs) {}
 
     Resultat postulat(String... arguments) {
@@ -39,7 +46,7 @@ class PostulatTest {
     Resultat avecSaisie(String saisie, String... arguments) {
         StringWriter sortie = new StringWriter();
         StringWriter erreurs = new StringWriter();
-        CommandLine ligne = Postulat.ligneDeCommande(HORLOGE, new BufferedReader(new StringReader(saisie)));
+        CommandLine ligne = Postulat.ligneDeCommande(HORLOGE, new BufferedReader(new StringReader(saisie)), reglages -> faux);
         ligne.setOut(new PrintWriter(sortie, true));
         ligne.setErr(new PrintWriter(erreurs, true));
         String[] tous = Stream.concat(Stream.of("--donnees", dossier.toString()), Stream.of(arguments))
@@ -532,6 +539,89 @@ class PostulatTest {
         @Test
         void sans_sous_commande_l_aide_du_profil_s_affiche() {
             assertThat(reussi("profil").sortie()).contains("initialiser").contains("verifier");
+        }
+    }
+
+    @Nested
+    class LeModele {
+
+        @Test
+        void l_essai_interroge_la_gamme_economique_et_dit_ce_qu_il_a_coute() {
+            faux.repondre(new Modeles.Essai.Salut("Prêt."));
+
+            Resultat r = reussi("modele", "essai");
+
+            assertThat(r.sortie()).contains("Modèle claude-haiku-5-5 (gamme économique) : « Prêt. »")
+                    .contains("100 jetons en entrée, 50 en sortie").contains("coût 0,0015 $")
+                    .contains("L'appel est journalisé");
+            assertThat(faux.demandes()).singleElement().satisfies(d -> {
+                assertThat(d.gamme()).isEqualTo(Gamme.ECONOMIQUE);
+                assertThat(d.tache()).isEqualTo("essai");
+                assertThat(d.candidature()).isEmpty();
+            });
+        }
+
+        @Test
+        void l_essai_de_la_gamme_capable_suit_les_reglages() throws IOException {
+            Files.writeString(dossier.resolve("postulat.properties"), "modele.capable = claude-sonnet-5-5\n");
+            faux.repondre(new Modeles.Essai.Salut("Prêt."));
+
+            Resultat r = reussi("modele", "essai", "--gamme", "capable");
+
+            assertThat(r.sortie()).contains("Modèle claude-sonnet-5-5 (gamme capable)");
+            assertThat(faux.demandes()).extracting(Demande::gamme).containsExactly(Gamme.CAPABLE);
+        }
+
+        @Test
+        void les_couts_se_cumulent_par_mois_appels_echoues_compris() {
+            faux.repondre(new Modeles.Essai.Salut("Un.")).repondre(new Modeles.Essai.Salut("Deux."))
+                    .echouer(new ErreurModele(ErreurModele.Nature.INDISPONIBLE, "API injoignable.", null, null));
+            reussi("modele", "essai");
+            reussi("modele", "essai");
+            postulat("modele", "essai");
+
+            assertThat(reussi("modele", "couts").sortie())
+                    .contains("Coûts du modèle de langage, par mois")
+                    .contains("  2026-10   3 appels   0,0030 $")
+                    .contains("  total     3 appels   0,0030 $");
+        }
+
+        @Test
+        void sans_appel_les_couts_le_disent() {
+            assertThat(reussi("modele", "couts").sortie()).contains("Aucun appel au modèle").contains("postulat modele essai");
+        }
+
+        @Test
+        void un_echec_du_modele_est_explique_et_journalise() {
+            faux.echouer(new ErreurModele(ErreurModele.Nature.CONFIGURATION, "Aucune clé d'API.", null, null));
+
+            Resultat r = postulat("modele", "essai");
+
+            assertThat(r.code()).isEqualTo(Postulat.ERREUR);
+            assertThat(r.erreurs()).contains("Aucune clé d'API.");
+            assertThat(reussi("modele", "couts").sortie()).contains("1 appel");
+        }
+
+        @Test
+        void une_gamme_inconnue_est_une_saisie_invalide() {
+            Resultat r = postulat("modele", "essai", "--gamme", "premium");
+
+            assertThat(r.code()).isEqualTo(Postulat.SAISIE_INVALIDE);
+            assertThat(r.erreurs()).contains("gamme inconnue « premium »");
+            assertThat(faux.demandes()).isEmpty();
+        }
+
+        @Test
+        void la_fiche_d_une_candidature_affiche_ce_que_le_modele_a_coute() {
+            reussi("ajouter", "Acme", "Stage");
+
+            assertThat(reussi("voir", "1").sortie()).contains("Modèle de langage : aucun appel");
+        }
+
+        @Test
+        void sans_sous_commande_l_aide_du_modele_s_affiche() {
+            assertThat(reussi("modele").sortie()).contains("Usage : postulat modele").contains("COMMANDE")
+                    .doesNotContain("[COMMAND]").contains("essai").contains("couts");
         }
     }
 }

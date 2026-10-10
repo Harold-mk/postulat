@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import picocli.CommandLine;
 import picocli.CommandLine.ITypeConverter;
 import picocli.CommandLine.TypeConversionException;
+import postulat.ia.Gamme;
 import postulat.suivi.Canal;
 import postulat.suivi.Etape;
 import postulat.suivi.TypeEntretien;
@@ -33,6 +34,7 @@ final class Conversions {
         ligne.registerConverter(Etape.class, parLibelle(Etape.class, Etape::libelle, "étape inconnue"));
         ligne.registerConverter(TypeEntretien.class, parLibelle(TypeEntretien.class, Enum::name, "type d'entretien inconnu"));
         ligne.registerConverter(Canal.class, parLibelle(Canal.class, Enum::name, "canal inconnu"));
+        ligne.registerConverter(Gamme.class, parLibelle(Gamme.class, Enum::name, "gamme inconnue"));
         ligne.registerConverter(LocalDate.class, texte -> date(texte, LocalDate.now(horloge)));
     }
 

@@ -244,7 +244,20 @@ class DonneesTest {
         void un_reglage_absent_garde_sa_valeur_par_defaut() throws IOException {
             Files.writeString(dossier.resolve("postulat.properties"), "relance.delai.jours = 7\nobjectif.hebdomadaire=20\n");
 
-            assertThat(donnees().reglages()).isEqualTo(new Reglages(new ReglesRelance(7, 2), 20));
+            assertThat(donnees().reglages()).isEqualTo(
+                    new Reglages(new ReglesRelance(7, 2), 20, Reglages.MODELE_ECONOMIQUE, Reglages.MODELE_CAPABLE));
+        }
+
+        @Test
+        void le_modele_de_chaque_gamme_se_regle_parmi_ceux_dont_le_cout_se_mesure() throws IOException {
+            Files.writeString(dossier.resolve("postulat.properties"), "modele.capable = claude-sonnet-5-5\n");
+            assertThat(donnees().reglages().modeleCapable()).isEqualTo("claude-sonnet-5-5");
+
+            Files.writeString(dossier.resolve("postulat.properties"), "modele.economique = modele-inconnu\n");
+            assertThatThrownBy(() -> donnees().reglages())
+                    .isInstanceOf(ErreurStockage.class)
+                    .hasMessageContaining("modele.economique")
+                    .hasMessageContaining("claude-haiku-5-5");
         }
 
         @Test

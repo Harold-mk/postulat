@@ -17,6 +17,7 @@
         <sqlite-jdbc.version>3.53.4.0</sqlite-jdbc.version>
         <picocli.version>4.7.7</picocli.version>
         <snakeyaml-engine.version>3.1.1</snakeyaml-engine.version>
+        <anthropic-java.version>2.65.0</anthropic-java.version>
         <!-- Rempli par JaCoCo ; vide par défaut pour que surefire démarre aussi sans lui. -->
         <argLine></argLine>
     </properties>
@@ -33,6 +34,12 @@
             <groupId>org.snakeyaml</groupId>
             <artifactId>snakeyaml-engine</artifactId>
             <version>${snakeyaml-engine.version}</version>
+        </dependency>
+        <!-- Modèle de langage : SDK officiel, dans le paquet ia seulement (pile technique § 6). -->
+        <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>${anthropic-java.version}</version>
         </dependency>
         <!-- Ligne de commande, dans le paquet cli seulement (pile technique § 5). -->
         <dependency>
@@ -81,6 +88,17 @@
                 </configuration>
             </plugin>
 
+            <!-- Toujours reconstruire le jar simple : sinon un build sans « clean » reprend le jar déjà
+                 fusionné du build précédent, et shade y retrouve chaque dépendance en double. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <forceCreation>true</forceCreation>
+                </configuration>
+            </plugin>
+
             <!-- Jar exécutable autonome : java -jar target/postulat.jar <commande> -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -101,20 +119,14 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <!-- Le manifeste est réécrit en entier par le transformateur ci-dessous. -->
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
                                     </excludes>
                                 </filter>
-                                <!-- Seul le manifeste du projet compte : il porte la classe principale. -->
+                                <!-- okio et okio-jvm portent le même descripteur de module Kotlin. -->
                                 <filter>
-                                    <artifact>info.picocli:picocli</artifact>
-                                    <excludes><exclude>META-INF/MANIFEST.MF</exclude></excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.xerial:sqlite-jdbc</artifact>
-                                    <excludes><exclude>META-INF/MANIFEST.MF</exclude></excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>org.snakeyaml:snakeyaml-engine</artifact>
-                                    <excludes><exclude>META-INF/MANIFEST.MF</exclude></excludes>
+                                    <artifact>com.squareup.okio:okio</artifact>
+                                    <excludes><exclude>META-INF/okio.kotlin_module</exclude></excludes>
                                 </filter>
                             </filters>
                             <transformers>
@@ -126,6 +138,9 @@
                                     </manifestEntries>
                                 </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <!-- Licences et notices des dépendances Apache, réunies plutôt qu'écrasées. -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer"/>
                             </transformers>
                         </configuration>
                     </execution>

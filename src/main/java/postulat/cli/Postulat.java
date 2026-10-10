@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.concurrent.Callable;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -19,8 +20,12 @@ import picocli.CommandLine.ScopeType;
 import picocli.CommandLine.Spec;
 import picocli.CommandLine.TypeConversionException;
 import picocli.CommandLine.UnmatchedArgumentException;
+import postulat.ia.ErreurModele;
+import postulat.ia.Modele;
+import postulat.ia.ModeleAnthropic;
 import postulat.stockage.Donnees;
 import postulat.stockage.ErreurStockage;
+import postulat.stockage.Reglages;
 import postulat.suivi.RefusMetier;
 
 /**
@@ -50,6 +55,7 @@ import postulat.suivi.RefusMetier;
             Archives.Sauvegarder.class,
             Archives.Restaurer.class,
             Profils.CommandeProfil.class,
+            Modeles.CommandeModele.class,
         },
         footer = {"", "Exemples :",
             "  postulat ajouter \"Acme\" \"Stage data\" --etape envoyée --le 01/10/2026",
@@ -73,21 +79,32 @@ public final class Postulat implements Callable<Integer> {
     @Spec
     CommandSpec spec;
 
+    /** Le vrai modèle, derrière l'API Anthropic ; la clé vient de l'environnement. */
+    static final Function<Reglages, Modele> MODELE_ANTHROPIC =
+            r -> ModeleAnthropic.depuisEnvironnement(r.modeleEconomique(), r.modeleCapable());
+
     private final Clock horloge;
     private final BufferedReader entree;
+    private final Function<Reglages, Modele> fabriqueModele;
 
-    Postulat(Clock horloge, BufferedReader entree) {
+    Postulat(Clock horloge, BufferedReader entree, Function<Reglages, Modele> fabriqueModele) {
         this.horloge = horloge;
         this.entree = entree;
+        this.fabriqueModele = fabriqueModele;
     }
 
     public static void main(String[] arguments) {
         BufferedReader clavier = new BufferedReader(new InputStreamReader(System.in));
-        System.exit(ligneDeCommande(Clock.systemDefaultZone(), clavier).execute(arguments));
+        System.exit(ligneDeCommande(Clock.systemDefaultZone(), clavier, MODELE_ANTHROPIC).execute(arguments));
     }
 
     static CommandLine ligneDeCommande(Clock horloge, BufferedReader entree) {
-        CommandLine ligne = new CommandLine(new Postulat(horloge, entree));
+        return ligneDeCommande(horloge, entree, MODELE_ANTHROPIC);
+    }
+
+    /** {@code fabriqueModele} permet aux tests de substituer un faux modèle : aucun appel réel, aucun coût. */
+    static CommandLine ligneDeCommande(Clock horloge, BufferedReader entree, Function<Reglages, Modele> fabriqueModele) {
+        CommandLine ligne = new CommandLine(new Postulat(horloge, entree, fabriqueModele));
         Conversions.enregistrer(ligne, horloge);
         franciser(ligne);
         ligne.setParameterExceptionHandler((e, arguments) -> {
@@ -101,7 +118,8 @@ public final class Postulat implements Callable<Integer> {
                 fautive.getErr().println(e.getMessage());
                 return REFUSE;
             }
-            fautive.getErr().println(e instanceof ErreurStockage ? e.getMessage() : "Erreur inattendue : " + e);
+            boolean explique = e instanceof ErreurStockage || e instanceof ErreurModele;
+            fautive.getErr().println(explique ? e.getMessage() : "Erreur inattendue : " + e);
             return ERREUR;
         });
         return ligne;
@@ -128,6 +146,14 @@ public final class Postulat implements Callable<Integer> {
         return entree;
     }
 
+    Clock horloge() {
+        return horloge;
+    }
+
+    Function<Reglages, Modele> fabriqueModele() {
+        return fabriqueModele;
+    }
+
     /** Les erreurs de saisie les plus courantes, dites en français ; les autres restent dans les mots de picocli. */
     static String enFrancais(ParameterException e) {
         if (e instanceof MissingParameterException manquant) {
@@ -147,6 +173,9 @@ public final class Postulat implements Callable<Integer> {
     }
 
     private static void franciser(CommandLine ligne) {
+        if (!ligne.getSubcommands().isEmpty()) {
+            ligne.getCommandSpec().usageMessage().synopsisSubcommandLabel("COMMANDE");
+        }
         ligne.getCommandSpec().usageMessage()
                 .autoWidth(true)
                 .synopsisHeading("Usage : ")

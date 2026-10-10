@@ -11,13 +11,18 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import postulat.ia.AppelModele;
+import postulat.ia.Consommation;
+import postulat.ia.Demande;
 import postulat.suivi.Canal;
 import postulat.suivi.Candidature;
 import postulat.suivi.Contact;
@@ -186,6 +191,65 @@ public final class Base implements AutoCloseable {
                 .filter(n -> stockees.get(n.numero()) != n.candidature().etape())
                 .map(n -> new Divergence(n.numero(), stockees.get(n.numero()), n.candidature().etape()))
                 .toList();
+    }
+
+    /** Ajoute un appel au journal du modèle (EN-5, EN-12). */
+    public void journaliser(AppelModele appel) {
+        Demande d = appel.demande();
+        Optional<Consommation> c = appel.consommation();
+        transaction(() -> {
+            try (PreparedStatement s = connexion.prepareStatement("INSERT INTO appel_modele (survenu_le, tache, gamme, "
+                    + "candidature_id, modele, jetons_entree, jetons_sortie, jetons_cache_lus, jetons_cache_ecrits, "
+                    + "cout_micro_dollars, duree_ms, issue, consignes, contenu, reponse) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                s.setString(1, appel.survenuLe().toString());
+                s.setString(2, d.tache());
+                s.setString(3, d.gamme().name());
+                s.setString(4, d.candidature().map(UUID::toString).orElse(null));
+                s.setString(5, c.map(Consommation::modele).orElse(""));
+                s.setLong(6, c.map(Consommation::jetonsEntree).orElse(0L));
+                s.setLong(7, c.map(Consommation::jetonsSortie).orElse(0L));
+                s.setLong(8, c.map(Consommation::jetonsCacheLus).orElse(0L));
+                s.setLong(9, c.map(Consommation::jetonsCacheEcrits).orElse(0L));
+                s.setLong(10, c.map(Consommation::coutMicroDollars).orElse(0L));
+                s.setLong(11, c.map(x -> x.duree().toMillis()).orElse(0L));
+                s.setString(12, appel.issue());
+                s.setString(13, d.consignes());
+                s.setString(14, d.contenu());
+                s.setString(15, appel.reponse());
+                s.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    /** Ce qu'ont coûté les appels faits pour une candidature (EN-5). */
+    public CoutModele coutModele(UUID candidature) {
+        return lecture(() -> {
+            try (PreparedStatement s = connexion.prepareStatement(
+                    "SELECT count(*), coalesce(sum(cout_micro_dollars), 0) FROM appel_modele WHERE candidature_id = ?")) {
+                s.setString(1, candidature.toString());
+                try (ResultSet r = s.executeQuery()) {
+                    r.next();
+                    return new CoutModele(r.getInt(1), r.getLong(2));
+                }
+            }
+        });
+    }
+
+    /** Le cumul de chaque mois, du plus ancien au plus récent, en temps universel (EN-5). */
+    public Map<YearMonth, CoutModele> coutsModeleParMois() {
+        return lecture(() -> {
+            Map<YearMonth, CoutModele> mois = new LinkedHashMap<>();
+            try (Statement s = connexion.createStatement();
+                    ResultSet r = s.executeQuery("SELECT substr(survenu_le, 1, 7) AS mois, count(*), sum(cout_micro_dollars) "
+                            + "FROM appel_modele GROUP BY mois ORDER BY mois")) {
+                while (r.next()) {
+                    mois.put(YearMonth.parse(r.getString(1)), new CoutModele(r.getInt(2), r.getLong(3)));
+                }
+            }
+            return mois;
+        });
     }
 
     /** Nombre total d'événements enregistrés. */
