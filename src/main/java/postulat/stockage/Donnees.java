@@ -1,7 +1,10 @@
 package postulat.stockage;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.util.Locale;
 import java.util.Map;
@@ -17,6 +20,8 @@ public final class Donnees {
     static final String BASE = "postulat.db";
     static final String SAUVEGARDES = "sauvegardes";
     static final String REGLAGES = "postulat.properties";
+    static final String PROFIL = "profil.yaml";
+    static final String GABARIT = "/postulat/gabarit-profil.yaml";
 
     private final Path repertoire;
     private final Clock horloge;
@@ -55,6 +60,41 @@ public final class Donnees {
 
     public Path repertoireSauvegardes() {
         return sauvegardes.repertoire();
+    }
+
+    /** Le profil : la donnée la plus sensible du projet, donc ici et nulle part ailleurs par défaut. */
+    public Path fichierProfil() {
+        return repertoire.resolve(PROFIL);
+    }
+
+    public LectureProfil lireProfil(Path fichier) {
+        return LecteurProfil.lire(fichier);
+    }
+
+    /**
+     * Écrit le gabarit commenté du profil (UC-01). N'écrase jamais un fichier existant (A1), et ne
+     * laisse aucun fichier partiel en cas d'échec (E1) : le gabarit prend son nom d'un seul mouvement.
+     */
+    public void ecrireGabaritProfil(Path cible) {
+        Path provisoire = cible.resolveSibling(cible.getFileName() + ".provisoire");
+        try (InputStream gabarit = Donnees.class.getResourceAsStream(GABARIT)) {
+            if (gabarit == null) {
+                throw new IllegalStateException("Gabarit introuvable dans le jar : " + GABARIT);
+            }
+            Files.createDirectories(cible.toAbsolutePath().getParent());
+            Files.copy(gabarit, provisoire, StandardCopyOption.REPLACE_EXISTING);
+            // Pas d'ATOMIC_MOVE : sous Windows, il remplace la cible existante sans rien dire. Un simple
+            // renommage dans le même répertoire échoue au contraire si un profil est déjà là.
+            Files.move(provisoire, cible);
+        } catch (IOException e) {
+            try {
+                Files.deleteIfExists(provisoire);
+            } catch (IOException ignoree) {
+                // le fichier provisoire porte un nom explicite ; l'erreur d'origine compte davantage
+            }
+            throw new ErreurStockage("Écriture du gabarit impossible dans " + cible.toAbsolutePath().getParent()
+                    + " : " + e + ". Aucun fichier n'a été laissé.", e);
+        }
     }
 
     /** Ouvre la base ; les migrations en attente s'appliquent après une sauvegarde automatique (ADR-0004). */

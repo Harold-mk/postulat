@@ -452,4 +452,86 @@ class PostulatTest {
             assertThat(Conversions.cle("à-préparer")).isEqualTo("a_preparer");
         }
     }
+
+    @Nested
+    class LeProfil {
+
+        static final String VALIDE = """
+                identite: {nom: Camille Martin, titre: Étudiante en master data, contact: camille@exemple.test}
+                experiences:
+                  - id: exp-acme
+                    poste: Stagiaire data analyst
+                    organisation: Acme
+                    periode: 2025-01 à 2025-06
+                    realisations:
+                      - {id: exp-acme-r1, objectif: Suivre les ventes, tache: Tableau de bord Power BI}
+                      - {id: exp-acme-r2, objectif: Fiabiliser les données, tache: Contrôles SQL quotidiens}
+                formations:
+                  - {id: form-master, diplome: Master data, etablissement: Université Lumière, periode: 2024 à 2026}
+                competences:
+                  - {id: comp-sql, nom: SQL}
+                """;
+
+        @Test
+        void l_initialisation_ecrit_un_gabarit_dans_le_repertoire_des_donnees() {
+            Resultat r = reussi("profil", "initialiser");
+
+            assertThat(r.sortie()).contains("Gabarit de profil écrit : " + dossier.resolve("profil.yaml"))
+                    .contains("postulat profil verifier");
+            assertThat(dossier.resolve("profil.yaml")).exists();
+        }
+
+        @Test
+        void elle_n_ecrase_jamais_un_profil_et_propose_un_nom_derive() throws IOException {
+            Files.writeString(dossier.resolve("profil.yaml"), "mes faits");
+
+            Resultat r = postulat("profil", "initialiser");
+
+            assertThat(r.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(r.erreurs()).contains("Un profil existe déjà").contains("n'a pas été modifié")
+                    .contains("--fichier \"" + dossier.resolve("profil-2.yaml") + "\"");
+            assertThat(Files.readString(dossier.resolve("profil.yaml"))).isEqualTo("mes faits");
+        }
+
+        @Test
+        void le_gabarit_verifie_liste_chaque_a_completer_a_sa_ligne() {
+            reussi("profil", "initialiser");
+
+            Resultat r = postulat("profil", "verifier");
+
+            assertThat(r.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(r.sortie()).contains("12 problèmes, dans l'ordre du fichier :")
+                    .containsPattern("ligne \\d+, colonne \\d+ · identite\\.nom : à compléter")
+                    .contains("Corrigez, puis relancez : postulat profil verifier");
+        }
+
+        @Test
+        void un_profil_complet_est_declare_valide_avec_son_decompte() throws IOException {
+            Path fichier = Files.writeString(dossier.resolve("mon-profil.yaml"), VALIDE);
+
+            Resultat r = reussi("profil", "verifier", "--fichier", fichier.toString());
+
+            assertThat(r.sortie()).contains("Profil valide : 5 faits : 1 expérience, 2 réalisations, 1 formation, 1 compétence.");
+        }
+
+        @Test
+        void sans_profil_la_verification_renvoie_au_gabarit() {
+            Resultat r = postulat("profil", "verifier");
+
+            assertThat(r.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(r.erreurs()).contains("Aucun profil").contains("postulat profil initialiser");
+        }
+
+        @Test
+        void une_erreur_de_syntaxe_est_situee() throws IOException {
+            Files.writeString(dossier.resolve("profil.yaml"), "identite:\n  nom: A\n\ttitre: B\n");
+
+            assertThat(postulat("profil", "verifier").sortie()).contains("1 problème,").contains("ligne 3").contains("tabulations");
+        }
+
+        @Test
+        void sans_sous_commande_l_aide_du_profil_s_affiche() {
+            assertThat(reussi("profil").sortie()).contains("initialiser").contains("verifier");
+        }
+    }
 }

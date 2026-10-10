@@ -13,8 +13,9 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 |---|---|---|
 | 1 | Domaine du suivi : étapes, transitions, journal d'événements, relances | ✅ |
 | 2 | Stockage SQLite, ligne de commande, tableau de bord, sauvegarde (UC-10 à UC-18) | ✅ |
-| 3–4 | Profil, vérification de traçabilité, note ATS | à venir |
-| 5–8 | Modèle de langage, CV ciblé, lettre, évaluation | à venir |
+| 3 | Profil, gabarit, validation, vérification de traçabilité (UC-01, UC-03) | ✅ |
+| 4 | Note ATS | à venir |
+| 5–8 | Modèle de langage, import d'un CV existant (UC-02), CV ciblé, lettre, évaluation | à venir |
 | 9 | Interface de bureau | à venir |
 
 ## Ce qui fonctionne aujourd'hui
@@ -45,6 +46,20 @@ langage.
 - **Sauvegarde et restauration.** Une archive est complète ou n'existe pas. Une restauration vérifie
   tout avant d'écrire quoi que ce soit, puis sauvegarde l'état qu'elle remplace.
 
+La production de documents a ses fondations, sans modèle de langage pour l'instant :
+
+- **Le profil**, seule source de faits, s'écrit en YAML à partir d'un gabarit commenté. Quatre
+  sortes de faits — expériences, réalisations, formations, compétences — chacun avec un identifiant
+  unique, qu'un dossier cite. La vérification liste d'un coup tout ce qui manque, à la ligne et à la
+  colonne près : champ obligatoire vide, « à compléter » oublié, identifiant en double, champ mal
+  orthographié, erreur de syntaxe.
+- **La vérification de traçabilité**, qui décidera si un document produit est recevable. Toute
+  phrase d'origine « faits » doit citer des faits qui existent (RG-01), ne contenir que des nombres
+  présents dans ces faits (RG-03) — « 15 commerciaux » est refusé si le fait dit 12, « une
+  vingtaine » aussi — et ne jamais mentionner une exigence de l'offre que le profil ne couvre pas
+  (RG-04). Une phrase écrite par l'auteur n'est jamais rejetée. Des tests adversariaux reproduisent
+  les inventions typiques d'un modèle.
+
 ## Utilisation
 
 Construire une fois le jar autonome, puis l'utiliser :
@@ -68,6 +83,7 @@ java -jar target/postulat.jar actions
 | `retour-promis N JOUR` | une réponse promise pour une date |
 | `interaction N courriel\|appel [--notes TEXTE]` · `contact N NOM` · `noter N TEXTE` | la mémoire des échanges |
 | `sauvegarder` · `restaurer ARCHIVE` | archive datée ; retour à une archive après vérification |
+| `profil initialiser` · `profil verifier` | écrire le gabarit commenté du profil ; dire ce qui y manque, à la ligne près |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
 aujourd'hui. Les étapes s'écrivent avec ou sans accents : `offre reçue`, `offre_recue`.
@@ -89,8 +105,9 @@ Volontairement simple : cinq paquets rangés par sujet.
 ```
 postulat/
   suivi/        pipeline, journal, échéances, tableau de bord      Java pur
-  production/   profil, faits, traçabilité                         Java pur      (itération 3)
-  stockage/     SQLite en JDBC nu, migrations, sauvegardes         sqlite-jdbc
+  production/   profil, faits, traçabilité                         Java pur
+  stockage/     SQLite en JDBC nu, migrations, sauvegardes,        sqlite-jdbc
+                lecture du profil YAML                             snakeyaml-engine
   ia/           interface Modele + client Anthropic                              (itération 5)
   cli/          ligne de commande                                  picocli
 ```
@@ -139,7 +156,7 @@ vraie base SQLite, dans un répertoire temporaire.
 Le profil, la base de suivi et les dossiers produits contiennent des données personnelles. Ils ne
 vivent **jamais** dans ce dépôt, mais dans le répertoire utilisateur du système :
 `%LOCALAPPDATA%\postulat` sous Windows, `$XDG_DATA_HOME/postulat` sous Linux. On y trouve
-`postulat.db`, le dossier `sauvegardes/` et, s'il existe, `postulat.properties`. L'option
+`profil.yaml`, `postulat.db`, le dossier `sauvegardes/` et, s'il existe, `postulat.properties`. L'option
 `--donnees REPERTOIRE` en désigne un autre.
 
 ## Documentation

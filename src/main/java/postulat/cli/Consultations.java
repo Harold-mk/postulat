@@ -32,7 +32,7 @@ final class Consultations {
         @Override
         public Integer call() {
             LocalDate aujourdhui = aujourdhui();
-            Reglages reglages = racine.donnees().reglages();
+            Reglages reglages = racine().donnees().reglages();
             List<Numerotee> toutes;
             try (Base base = ouvrirBase()) {
                 toutes = base.toutes();
@@ -121,7 +121,7 @@ final class Consultations {
             }
             Map<UUID, Long> numeros = numeros(toutes);
             List<Candidature> candidatures = candidatures(toutes);
-            var regles = racine.donnees().reglages().relance();
+            var regles = racine().donnees().reglages().relance();
             List<Echeance> dues = Echeances.listeDeTravail(candidatures, aujourdhui, regles);
             PrintWriter out = sortie();
 
@@ -227,7 +227,7 @@ final class Consultations {
             }
             out.println();
             out.println("Échéances");
-            List<Echeance> echeances = Echeances.echeances(c, aujourdhui, racine.donnees().reglages().relance())
+            List<Echeance> echeances = Echeances.echeances(c, aujourdhui, racine().donnees().reglages().relance())
                     .stream().sorted(Comparator.comparing(Echeance::date)).toList();
             if (echeances.isEmpty()) {
                 out.println("  aucune");

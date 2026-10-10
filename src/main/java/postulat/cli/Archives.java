@@ -22,7 +22,7 @@ final class Archives {
 
         @Override
         public Integer call() throws IOException {
-            Path archive = racine.donnees().sauvegarder();
+            Path archive = racine().donnees().sauvegarder();
             long ko = (Files.size(archive) + 1023) / 1024;
             sortie().println("Sauvegarde écrite : " + archive + " (" + ko + " Ko).");
             sortie().println("Pour la restaurer : postulat restaurer \"" + archive + "\"");
@@ -42,7 +42,7 @@ final class Archives {
 
         @Override
         public Integer call() {
-            Donnees donnees = racine.donnees();
+            Donnees donnees = racine().donnees();
             PrintWriter out = sortie();
             try (Restauration r = donnees.preparerRestauration(archive)) {
                 out.println("Archive vérifiée : " + r.candidatures() + " candidature(s), " + r.evenements()
@@ -64,7 +64,7 @@ final class Archives {
             out.print("Tapez « oui » pour confirmer : ");
             out.flush();
             try {
-                String reponse = racine.entree().readLine();
+                String reponse = racine().entree().readLine();
                 return reponse != null && Conversions.cle(reponse).equals("oui");
             } catch (IOException e) {
                 throw new UncheckedIOException(e);

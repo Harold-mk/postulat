@@ -9,7 +9,6 @@ import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Parameters;
-import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
 import postulat.stockage.Base;
 import postulat.stockage.Numerotee;
@@ -17,22 +16,24 @@ import postulat.stockage.Numerotee;
 /** Socle des sous-commandes : accès aux données, au jour courant et à la sortie. */
 abstract class Commande implements Callable<Integer> {
 
-    @ParentCommand
-    Postulat racine;
-
     @Spec
     CommandSpec spec;
+
+    /** La commande racine, quelle que soit la profondeur : « postulat profil verifier » compte deux niveaux. */
+    Postulat racine() {
+        return (Postulat) spec.root().userObject();
+    }
 
     PrintWriter sortie() {
         return spec.commandLine().getOut();
     }
 
     LocalDate aujourdhui() {
-        return racine.aujourdhui();
+        return racine().aujourdhui();
     }
 
     Base ouvrirBase() {
-        return racine.donnees().ouvrirBase();
+        return racine().donnees().ouvrirBase();
     }
 
     /** Numéro de chaque candidature, pour afficher les échéances que le domaine désigne par UUID. */

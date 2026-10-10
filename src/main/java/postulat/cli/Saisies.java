@@ -58,7 +58,7 @@ final class Saisies {
 
     /** Après chaque saisie, ce qui est désormais attendu : le système rappelle (US-7). */
     static void afficherEcheances(Commande commande, Candidature c) {
-        List<Echeance> echeances = Echeances.echeances(c, commande.aujourdhui(), commande.racine.donnees().reglages().relance())
+        List<Echeance> echeances = Echeances.echeances(c, commande.aujourdhui(), commande.racine().donnees().reglages().relance())
                 .stream().sorted(Comparator.comparing(Echeance::date)).toList();
         for (Echeance e : echeances) {
             commande.sortie().println("  échéance le " + Affichage.date(e.date()) + " : " + Affichage.motif(e.motif()));

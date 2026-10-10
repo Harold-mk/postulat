@@ -49,6 +49,7 @@ import postulat.suivi.RefusMetier;
             Saisies.Noter.class,
             Archives.Sauvegarder.class,
             Archives.Restaurer.class,
+            Profils.CommandeProfil.class,
         },
         footer = {"", "Exemples :",
             "  postulat ajouter \"Acme\" \"Stage data\" --etape envoyée --le 01/10/2026",

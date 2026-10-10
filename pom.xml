@@ -16,6 +16,7 @@
         <assertj.version>3.26.3</assertj.version>
         <sqlite-jdbc.version>3.53.4.0</sqlite-jdbc.version>
         <picocli.version>4.7.7</picocli.version>
+        <snakeyaml-engine.version>3.1.1</snakeyaml-engine.version>
         <!-- Rempli par JaCoCo ; vide par défaut pour que surefire démarre aussi sans lui. -->
         <argLine></argLine>
     </properties>
@@ -26,6 +27,12 @@
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
             <version>${sqlite-jdbc.version}</version>
+        </dependency>
+        <!-- Lecture du profil YAML, avec la position de chaque valeur (UC-03). Dans stockage seulement. -->
+        <dependency>
+            <groupId>org.snakeyaml</groupId>
+            <artifactId>snakeyaml-engine</artifactId>
+            <version>${snakeyaml-engine.version}</version>
         </dependency>
         <!-- Ligne de commande, dans le paquet cli seulement (pile technique § 5). -->
         <dependency>
@@ -103,6 +110,10 @@
                                 </filter>
                                 <filter>
                                     <artifact>org.xerial:sqlite-jdbc</artifact>
+                                    <excludes><exclude>META-INF/MANIFEST.MF</exclude></excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.snakeyaml:snakeyaml-engine</artifact>
                                     <excludes><exclude>META-INF/MANIFEST.MF</exclude></excludes>
                                 </filter>
                             </filters>

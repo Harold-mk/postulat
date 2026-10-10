@@ -1,0 +1,52 @@
+# Profil postulat — la seule source de faits de vos candidatures.
+#
+# Tout ce qu'un CV produit affirme vient d'ici : chaque phrase cite, par leur identifiant, les
+# faits dont elle dérive, et le système refuse toute donnée chiffrée qui n'y figure pas. Écrivez
+# des faits vrais et précis, chiffrés quand vous le pouvez : c'est ce qui rend un CV convaincant.
+#
+# Mode d'emploi
+#   - Remplacez chaque « à compléter ». Les champs marqués « obligatoire » doivent être remplis.
+#   - Un champ facultatif est en commentaire : retirez le # pour l'utiliser.
+#   - L'indentation se fait avec des espaces, jamais avec des tabulations.
+#   - Ajoutez autant d'éléments que nécessaire en recopiant un bloc qui commence par « - id: ».
+#   - Vérifiez le résultat avec :  postulat profil verifier
+#
+# Identifiants (id) : minuscules et chiffres séparés par des tirets, uniques dans tout le profil.
+# Un dossier cite un fait par son identifiant : ne le changez plus une fois qu'il a servi.
+
+identite:                       # obligatoire : l'en-tête du CV
+  nom: à compléter
+  titre: à compléter            # ex. Étudiant en master data science
+  contact: à compléter          # ex. courriel · téléphone
+  # lieu: Lyon                  # facultatif
+
+# Stages, alternances, emplois, projets personnels ou associatifs.
+experiences:
+  - id: exp-1
+    poste: à compléter
+    organisation: à compléter   # entreprise, association ; « Projet personnel » pour un projet mené seul
+    periode: à compléter        # ex. 2025-01 à 2025-06
+    # duree: 6 mois             # facultatif, mais c'est lui seul qui justifie « 6 mois » dans un CV
+    # lieu: Paris               # facultatif
+    # consigne: …               # facultatif : consigne de présentation, transmise à la génération
+    realisations:               # ce que vous y avez accompli, un fait par réalisation
+      - id: exp-1-r1
+        objectif: à compléter   # pourquoi : le besoin, le problème à résoudre
+        tache: à compléter      # quoi : ce que vous avez fait vous-même
+        # resultat: …           # facultatif : l'effet obtenu, chiffré si possible
+        # competences: [SQL, Python]    # facultatif : outils et compétences mobilisés
+
+# Diplômes, certifications, formations suivies.
+formations:
+  - id: form-1
+    diplome: à compléter
+    etablissement: à compléter
+    periode: à compléter        # ex. 2024 à 2026
+    # details: …                # facultatif : spécialité, mention, matières
+    # realisations:             # facultatif : projets menés pendant la formation, comme ci-dessus
+
+# Compétences, outils, langues.
+competences:
+  - id: comp-1
+    nom: à compléter            # ex. SQL, ou Anglais
+    # niveau: avancé            # facultatif
