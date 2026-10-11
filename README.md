@@ -23,12 +23,21 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 8c | Validation : dossier figé, PDF et DOCX dans le répertoire de la candidature (UC-09) | ✅ |
 | 8d | Phrases versées au profil (UC-04) | ✅ |
 | 8e | Import d'un CV existant pour amorcer le profil (UC-02) | ✅ |
-| 9 | Interface de bureau | à venir |
+| 9a | Interface de bureau : tableau de bord, actions du jour, candidatures et leurs saisies | ✅ |
+| 9b | Interface de bureau : offres et dossiers — analyse, génération, correction phrase à phrase, validation | à venir |
+| 9c | Empaquetage Windows par `jpackage` | à venir |
 
 ## Ce qui fonctionne aujourd'hui
 
-Le suivi de campagne est utilisable au quotidien, en ligne de commande, sans aucun modèle de
-langage.
+Le suivi de campagne est utilisable au quotidien, en ligne de commande ou dans une fenêtre, sans
+aucun modèle de langage.
+
+- **L'interface de bureau.** `postulat bureau` ouvre une fenêtre, en JavaFX avec le thème Primer
+  d'AtlantaFX : le tableau de bord avec ses graphiques, les actions du jour — une relance faite se
+  coche d'un clic —, la liste des candidatures filtrée par étape ou par texte, et la fiche de chacune,
+  d'où l'on avance, écarte, rouvre, relance, note un entretien, un échange, un contact. Les boutons ne
+  proposent que ce que l'étape permet, et un refus du domaine laisse la saisie ouverte pour la
+  corriger. Elle lit et écrit les mêmes données que la ligne de commande, par les mêmes règles.
 
 - **Un pipeline de 11 étapes** (`repérée` → `à_préparer` → `prête` → `envoyée` → `entretien` →
   `offre_reçue` → `acceptée`, plus cinq issues terminales). Les transitions autorisées sont
@@ -181,6 +190,7 @@ java -jar target/postulat.jar actions
 | `dossier valider N` · `dossier voir N --version V` | figer le dossier, écrire ses PDF et DOCX, passer à `prête` ; relire une version validée, justifications comprises |
 | `dossier verser N PHRASE --objectif TEXTE [--dans ID] [--resultat TEXTE]` · `--competence` · `--enrichir ID` | faire d'une phrase de votre main un fait du profil |
 | `modele essai [--gamme capable]` · `modele couts` | vérifier la clé d'API par un appel minuscule ; le cumul des coûts, mois par mois |
+| `bureau` | ouvrir l'interface de bureau |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
 aujourd'hui. Les étapes s'écrivent avec ou sans accents : `offre reçue`, `offre_recue`.
@@ -223,7 +233,7 @@ git refusent de toute façon un commit qui contiendrait une clé.
 
 ## Architecture
 
-Volontairement simple : six paquets rangés par sujet.
+Volontairement simple : des paquets rangés par sujet.
 
 ```
 postulat/
@@ -234,7 +244,11 @@ postulat/
   ia/           interface Modele, client Anthropic, journal        anthropic-java
   rendu/        mise en page PDF sur une page, relecture du texte, pdfbox
                 DOCX écrit à la main
+  libelles/     la mise en mots du domaine, en français : dates,
+                étapes, échéances — commune aux deux interfaces
   cli/          ligne de commande                                  picocli
+  bureau/       interface de bureau ; Session, sans rien de        javafx,
+                graphique, en est la façade testable               atlantafx
 ```
 
 Trois règles :

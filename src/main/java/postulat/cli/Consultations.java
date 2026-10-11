@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import postulat.libelles.Libelles;
 import postulat.stockage.Base;
 import postulat.stockage.DossierGenere;
 import postulat.stockage.VersionValidee;
@@ -49,7 +50,7 @@ final class Consultations {
                     reglages.objectifHebdomadaire());
             PrintWriter out = sortie();
 
-            out.println("Tableau de bord du " + Affichage.date(aujourdhui));
+            out.println("Tableau de bord du " + Libelles.date(aujourdhui));
             out.println();
             out.println("Répartition par étape");
             out.println("  " + repartition(t, false));
@@ -59,34 +60,34 @@ final class Consultations {
             LocalDate debut = toutes.stream().map(n -> n.candidature().dateCreation())
                     .min(Comparator.naturalOrder()).orElse(aujourdhui);
             for (TableauDeBord.Semaine s : t.semaines()) {
-                out.printf("  semaine du %s  %3d / %d%s%n", Affichage.date(s.lundi()), s.envoyees(),
+                out.printf("  semaine du %s  %3d / %d%s%n", Libelles.date(s.lundi()), s.envoyees(),
                         t.objectifHebdomadaire(), etat(s, debut));
             }
             out.println();
             titre(out, "En attente de réponse", t.enAttente().size(), "la plus ancienne d'abord");
             for (Candidature c : t.enAttente()) {
-                out.println("  " + Affichage.titre(numeros.get(c.id()), c) + " · envoyée le "
-                        + Affichage.date(c.dateEntreeEtape()) + ", " + Affichage.ilYA(c.dateEntreeEtape(), aujourdhui)
+                out.println("  " + Libelles.titre(numeros.get(c.id()), c) + " · envoyée le "
+                        + Libelles.date(c.dateEntreeEtape()) + ", " + Libelles.ilYA(c.dateEntreeEtape(), aujourdhui)
                         + ", " + relances(c.relancesDepuisEnvoi().size()));
             }
             out.println();
             titre(out, "Actions dues aujourd'hui", t.actionsDues().size(), "la plus urgente d'abord");
             for (Echeance e : t.actionsDues()) {
                 long numero = numeros.get(e.candidatureId());
-                out.println("  " + Affichage.titre(numero, e) + " · " + Affichage.motif(e.motif()) + ", "
-                        + Affichage.retard(e, aujourdhui) + Affichage.suggestion(e, numero).map(s -> " → " + s).orElse(""));
+                out.println("  " + Libelles.titre(numero, e) + " · " + Libelles.motif(e.motif()) + ", "
+                        + Libelles.retard(e, aujourdhui) + Affichage.suggestion(e, numero).map(s -> " → " + s).orElse(""));
             }
             out.println();
             titre(out, "Échéances des 7 prochains jours", t.aVenir().size(), "la plus proche d'abord");
             for (Echeance e : t.aVenir()) {
-                out.println("  " + Affichage.date(e.date()) + " · " + Affichage.titre(numeros.get(e.candidatureId()), e)
-                        + " · " + Affichage.motif(e.motif()));
+                out.println("  " + Libelles.date(e.date()) + " · " + Libelles.titre(numeros.get(e.candidatureId()), e)
+                        + " · " + Libelles.motif(e.motif()));
             }
             out.println();
             titre(out, "Brouillons à « repérée »", t.brouillons().size(), "le plus ancien d'abord");
             for (Candidature c : t.brouillons()) {
-                out.println("  " + Affichage.titre(numeros.get(c.id()), c) + " · repérée le "
-                        + Affichage.date(c.dateEntreeEtape()) + ", " + Affichage.ilYA(c.dateEntreeEtape(), aujourdhui));
+                out.println("  " + Libelles.titre(numeros.get(c.id()), c) + " · repérée le "
+                        + Libelles.date(c.dateEntreeEtape()) + ", " + Libelles.ilYA(c.dateEntreeEtape(), aujourdhui));
             }
             return 0;
         }
@@ -100,7 +101,7 @@ final class Consultations {
 
         /** Une semaine partielle ou en cours ne se lit pas comme un retard sur l'objectif (UC-16 A1, RG-22). */
         private static String etat(TableauDeBord.Semaine s, LocalDate debut) {
-            String partielle = s.partielle() ? "partielle : suivi commencé le " + Affichage.date(debut) : "";
+            String partielle = s.partielle() ? "partielle : suivi commencé le " + Libelles.date(debut) : "";
             if (s.enCours()) {
                 return "   en cours" + (partielle.isEmpty() ? "" : ", " + partielle);
             }
@@ -134,19 +135,19 @@ final class Consultations {
 
             if (dues.isEmpty()) {
                 // UC-14 A1 : le dire, plutôt qu'afficher une liste vide.
-                out.println("Aucune action due aujourd'hui (" + Affichage.date(aujourdhui) + ").");
+                out.println("Aucune action due aujourd'hui (" + Libelles.date(aujourdhui) + ").");
                 candidatures.stream()
                         .flatMap(c -> Echeances.echeances(c, aujourdhui, regles).stream())
                         .min(Comparator.comparing(Echeance::date))
-                        .ifPresent(e -> out.println("Prochaine échéance le " + Affichage.date(e.date()) + " : "
-                                + Affichage.titre(numeros.get(e.candidatureId()), e) + " · " + Affichage.motif(e.motif())));
+                        .ifPresent(e -> out.println("Prochaine échéance le " + Libelles.date(e.date()) + " : "
+                                + Libelles.titre(numeros.get(e.candidatureId()), e) + " · " + Libelles.motif(e.motif())));
                 return 0;
             }
-            out.println("Actions dues le " + Affichage.date(aujourdhui) + " : " + dues.size() + ", la plus urgente d'abord");
+            out.println("Actions dues le " + Libelles.date(aujourdhui) + " : " + dues.size() + ", la plus urgente d'abord");
             for (Echeance e : dues) {
                 long numero = numeros.get(e.candidatureId());
-                out.println("  " + Affichage.titre(numero, e) + " (" + e.etape() + ")");
-                out.println("     " + Affichage.motif(e.motif()) + ", " + Affichage.retard(e, aujourdhui)
+                out.println("  " + Libelles.titre(numero, e) + " (" + e.etape() + ")");
+                out.println("     " + Libelles.motif(e.motif()) + ", " + Libelles.retard(e, aujourdhui)
                         + Affichage.suggestion(e, numero).map(s -> " → " + s).orElse(""));
             }
             return 0;
@@ -192,7 +193,7 @@ final class Consultations {
                     out.println(c.entreprise());
                 }
                 out.println("  #" + n.numero() + " " + c.poste() + " · " + c.etape() + " depuis le "
-                        + Affichage.date(c.dateEntreeEtape()));
+                        + Libelles.date(c.dateEntreeEtape()));
             }
             return 0;
         }
@@ -221,9 +222,9 @@ final class Consultations {
             Candidature c = n.candidature();
             PrintWriter out = sortie();
 
-            out.println(Affichage.titre(n.numero(), c));
-            out.println("Étape : " + c.etape() + ", depuis le " + Affichage.date(c.dateEntreeEtape()) + " ("
-                    + Affichage.ilYA(c.dateEntreeEtape(), aujourdhui) + ")");
+            out.println(Libelles.titre(n.numero(), c));
+            out.println("Étape : " + c.etape() + ", depuis le " + Libelles.date(c.dateEntreeEtape()) + " ("
+                    + Libelles.ilYA(c.dateEntreeEtape(), aujourdhui) + ")");
             // UC-12 A1 : l'absence de dossier se dit, elle ne se devine pas.
             if (!versions.isEmpty()) {
                 // CA-6.12 : la version envoyée se reconnaît sans ambiguïté ; à défaut, la dernière validée.
@@ -237,14 +238,14 @@ final class Consultations {
                         : "  Fichiers introuvables : " + repertoire + " a été déplacé ou supprimé ; le contenu reste lisible (UC-12 E1).");
             } else {
                 out.println(dossier.map(d -> "Dossier : généré le "
-                                + Affichage.date(LocalDate.ofInstant(d.genereLe(), racine().horloge().getZone())) + ", note globale "
+                                + Libelles.date(LocalDate.ofInstant(d.genereLe(), racine().horloge().getZone())) + ", note globale "
                                 + d.dossier().evaluation().noteGlobale() + "/100, non validé. Pour le relire : postulat dossier voir "
                                 + n.numero())
                         .orElse("Dossier : aucun dossier rattaché."));
             }
             // EN-5 : le coût par candidature s'affiche.
             out.println("Modèle de langage : " + (cout.appels() == 0 ? "aucun appel"
-                    : Affichage.appels(cout.appels()) + ", " + Affichage.dollars(cout.coutMicroDollars())));
+                    : Libelles.appels(cout.appels()) + ", " + Libelles.dollars(cout.coutMicroDollars())));
             out.println();
             if (offre.isPresent()) {
                 Affichage.offre(out, offre.get(), racine().horloge().getZone(), n.numero());
@@ -263,7 +264,7 @@ final class Consultations {
             out.println();
             out.println("Historique");
             for (Evenement e : c.journal()) {
-                out.println("  " + Affichage.date(e.date()) + "  " + Affichage.evenement(e));
+                out.println("  " + Libelles.date(e.date()) + "  " + Libelles.evenement(e));
             }
             out.println();
             out.println("Échéances");
@@ -273,8 +274,8 @@ final class Consultations {
                 out.println("  aucune");
             }
             for (Echeance e : echeances) {
-                out.println("  " + Affichage.date(e.date()) + "  " + Affichage.motif(e.motif()) + " ("
-                        + Affichage.retard(e, aujourdhui) + ")"
+                out.println("  " + Libelles.date(e.date()) + "  " + Libelles.motif(e.motif()) + " ("
+                        + Libelles.retard(e, aujourdhui) + ")"
                         + Affichage.suggestion(e, n.numero())
                                 .filter(s -> e.estAtteinte(aujourdhui) && !s.startsWith("postulat voir"))
                                 .map(s -> " → " + s).orElse(""));

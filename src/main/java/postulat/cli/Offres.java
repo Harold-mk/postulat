@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import postulat.libelles.Libelles;
 import postulat.ia.AnalyseOffre;
 import postulat.ia.AppelModele;
 import postulat.ia.Demande;
@@ -110,7 +111,7 @@ final class Offres {
                     return 0;
                 }
                 Numerotee n = creee.get();
-                out.println("Candidature " + Affichage.titre(n.numero(), n.candidature()) + " ajoutée à l'étape « repérée ».");
+                out.println("Candidature " + Libelles.titre(n.numero(), n.candidature()) + " ajoutée à l'étape « repérée ».");
                 if (analyse.isEmpty()) {
                     out.println("L'offre est conservée avec son texte, non analysée. Plus tard : postulat offre analyser " + n.numero());
                     return 0;
@@ -279,7 +280,7 @@ final class Offres {
     }
 
     static void dejaSuivie(PrintWriter out, Numerotee n) {
-        out.println("Cette offre est déjà suivie : " + Affichage.titre(n.numero(), n.candidature()) + ", à l'étape "
-                + Affichage.etape(n.candidature().etape()) + ". Pour la revoir : postulat voir " + n.numero());
+        out.println("Cette offre est déjà suivie : " + Libelles.titre(n.numero(), n.candidature()) + ", à l'étape "
+                + Libelles.etape(n.candidature().etape()) + ". Pour la revoir : postulat voir " + n.numero());
     }
 }

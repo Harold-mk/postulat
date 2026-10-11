@@ -61,6 +61,7 @@ import postulat.suivi.RefusMetier;
             Documents.CommandeCv.class,
             Dossiers.CommandeDossier.class,
             Modeles.CommandeModele.class,
+            Interface.OuvrirBureau.class,
         },
         footer = {"", "Exemples :",
             "  postulat ajouter \"Acme\" \"Stage data\" --etape envoyée --le 01/10/2026",

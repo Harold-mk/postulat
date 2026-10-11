@@ -7,6 +7,7 @@ import java.util.Optional;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import postulat.libelles.Libelles;
 import postulat.stockage.Base;
 import postulat.stockage.Numerotee;
 import postulat.suivi.Canal;
@@ -48,7 +49,7 @@ final class Saisies {
                 Numerotee n = trouver(base);
                 Candidature apres = appliquer(n.candidature(), date, aujourdhui);
                 base.enregistrer(apres);
-                sortie().println(Affichage.titre(n.numero(), apres) + " : " + bilan(apres, date) + ".");
+                sortie().println(Libelles.titre(n.numero(), apres) + " : " + bilan(apres, date) + ".");
                 afficherEcheances(this, apres);
                 conseil().ifPresent(sortie()::println);
             }
@@ -61,7 +62,7 @@ final class Saisies {
         List<Echeance> echeances = Echeances.echeances(c, commande.aujourdhui(), commande.racine().donnees().reglages().relance())
                 .stream().sorted(Comparator.comparing(Echeance::date)).toList();
         for (Echeance e : echeances) {
-            commande.sortie().println("  échéance le " + Affichage.date(e.date()) + " : " + Affichage.motif(e.motif()));
+            commande.sortie().println("  échéance le " + Libelles.date(e.date()) + " : " + Libelles.motif(e.motif()));
         }
     }
 
@@ -95,8 +96,8 @@ final class Saisies {
                 }
                 Candidature c = Candidature.creer(entreprise, poste, etape, date, aujourdhui);
                 Numerotee n = base.creer(c);
-                sortie().println("Candidature " + Affichage.titre(n.numero(), c) + " ajoutée à l'étape "
-                        + Affichage.etape(etape) + " le " + Affichage.date(date) + ".");
+                sortie().println("Candidature " + Libelles.titre(n.numero(), c) + " ajoutée à l'étape "
+                        + Libelles.etape(etape) + " le " + Libelles.date(date) + ".");
                 afficherEcheances(this, c);
             }
             return 0;
@@ -110,8 +111,8 @@ final class Saisies {
             if (existante.isPresent()) {
                 Numerotee n = existante.get();
                 Etape actuelle = n.candidature().etape();
-                throw new Refus("Cette offre est déjà suivie : " + Affichage.titre(n.numero(), n.candidature())
-                        + ", à l'étape " + Affichage.etape(actuelle) + ".\n"
+                throw new Refus("Cette offre est déjà suivie : " + Libelles.titre(n.numero(), n.candidature())
+                        + ", à l'étape " + Libelles.etape(actuelle) + ".\n"
                         + (actuelle.estTerminale()
                                 ? "Pour la reprendre : postulat rouvrir " + n.numero() + " ETAPE"
                                 : "Pour la faire avancer : postulat avancer " + n.numero() + " ETAPE")
@@ -135,7 +136,7 @@ final class Saisies {
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return "passée à " + Affichage.etape(vers) + " le " + Affichage.date(date);
+            return "passée à " + Libelles.etape(vers) + " le " + Libelles.date(date);
         }
 
         @Override
@@ -160,7 +161,7 @@ final class Saisies {
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return "écartée le " + Affichage.date(date) + " : " + String.join(" ", mots).strip();
+            return "écartée le " + Libelles.date(date) + " : " + String.join(" ", mots).strip();
         }
     }
 
@@ -177,7 +178,7 @@ final class Saisies {
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return "rouverte à " + Affichage.etape(vers) + " le " + Affichage.date(date);
+            return "rouverte à " + Libelles.etape(vers) + " le " + Libelles.date(date);
         }
     }
 
@@ -192,7 +193,7 @@ final class Saisies {
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return "relance n° " + apres.relancesDepuisEnvoi().size() + " enregistrée le " + Affichage.date(date);
+            return "relance n° " + apres.relancesDepuisEnvoi().size() + " enregistrée le " + Libelles.date(date);
         }
     }
 
@@ -212,7 +213,7 @@ final class Saisies {
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return "entretien " + Affichage.entretien(type) + " planifié le " + Affichage.date(jour);
+            return "entretien " + Libelles.entretien(type) + " planifié le " + Libelles.date(jour);
         }
     }
 
@@ -230,13 +231,13 @@ final class Saisies {
             Candidature passe = c.noterEntretien(type, date, aujourdhui);
             return compteRendu == null || compteRendu.isBlank()
                     ? passe
-                    : passe.noter("Compte rendu de l'entretien " + Affichage.entretien(type) + " : " + compteRendu.strip(),
+                    : passe.noter("Compte rendu de l'entretien " + Libelles.entretien(type) + " : " + compteRendu.strip(),
                             date, aujourdhui);
         }
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return "entretien " + Affichage.entretien(type) + " passé le " + Affichage.date(date)
+            return "entretien " + Libelles.entretien(type) + " passé le " + Libelles.date(date)
                     + (compteRendu == null || compteRendu.isBlank() ? "" : ", compte rendu joint");
         }
     }
@@ -254,7 +255,7 @@ final class Saisies {
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return "retour promis pour le " + Affichage.date(pour);
+            return "retour promis pour le " + Libelles.date(pour);
         }
     }
 
@@ -274,7 +275,7 @@ final class Saisies {
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return Affichage.canal(canal) + " enregistré le " + Affichage.date(date);
+            return Libelles.canal(canal) + " enregistré le " + Libelles.date(date);
         }
     }
 
@@ -291,7 +292,7 @@ final class Saisies {
 
         @Override
         String bilan(Candidature apres, LocalDate date) {
-            return "note ajoutée le " + Affichage.date(date);
+            return "note ajoutée le " + Libelles.date(date);
         }
     }
 
@@ -313,7 +314,7 @@ final class Saisies {
                 Numerotee n = trouver(base);
                 Contact contact = new Contact(nom, role, coordonnees);
                 base.ajouterContact(n.candidature().id(), contact);
-                sortie().println(Affichage.titre(n.numero(), n.candidature()) + " : contact " + contact.nom() + " ajouté.");
+                sortie().println(Libelles.titre(n.numero(), n.candidature()) + " : contact " + contact.nom() + " ajouté.");
             }
             return 0;
         }

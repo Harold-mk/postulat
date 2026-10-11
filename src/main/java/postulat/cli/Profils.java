@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import postulat.libelles.Libelles;
 import postulat.ia.ImportCv;
 import postulat.production.Competence;
 import postulat.production.Experience;
@@ -116,7 +117,7 @@ final class Profils {
             try (Base base = ouvrirBase()) {
                 i = ImportCv.importer(modele(base, racine().donnees().reglages()), texte);
             }
-            EcritureProfil.nouveau(cible, i.profil(), "importé de « " + source.getFileName() + " » le " + Affichage.date(aujourdhui()));
+            EcritureProfil.nouveau(cible, i.profil(), "importé de « " + source.getFileName() + " » le " + Libelles.date(aujourdhui()));
 
             PrintWriter out = sortie();
             out.println("Profil importé de « " + source.getFileName() + " » : " + cible);
@@ -137,7 +138,7 @@ final class Profils {
             }
             out.println("RELISEZ CHAQUE LIGNE : ce fichier devient la seule source de faits de vos candidatures, et le modèle a pu se "
                     + "tromper de case.");
-            out.println("Coût de l'import : 1 appel, " + Affichage.dollars(i.consommation().coutMicroDollars()) + ".");
+            out.println("Coût de l'import : 1 appel, " + Libelles.dollars(i.consommation().coutMicroDollars()) + ".");
             return 0;
         }
     }

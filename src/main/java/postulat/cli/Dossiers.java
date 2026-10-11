@@ -16,6 +16,7 @@ import java.util.UUID;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import postulat.libelles.Libelles;
 import postulat.ia.ErreurModele;
 import postulat.ia.GenerationDossier;
 import postulat.production.Assertion;
@@ -84,7 +85,7 @@ final class Dossiers {
                 Numerotee n = trouver(base);
                 Candidature c = n.candidature();
                 if (c.etape() != Etape.A_PREPARER && c.etape() != Etape.PRETE) {
-                    throw new Refus("La candidature n° " + numero + " est à l'étape " + Affichage.etape(c.etape()) + " : un dossier "
+                    throw new Refus("La candidature n° " + numero + " est à l'étape " + Libelles.etape(c.etape()) + " : un dossier "
                             + "se génère à l'étape « à_préparer », ou « prête » pour une nouvelle version." + (c.etape() == Etape.REPEREE
                                     ? " Pour poursuivre cette offre : postulat avancer " + numero + " à_préparer" : ""));
                 }
@@ -92,7 +93,7 @@ final class Dossiers {
                 LectureProfil lecture = profilUtilisable();
                 List<GenerationDossier.Reprise> reprises = base.dossier(c.id())
                         .map(g -> GenerationDossier.reprises(g.dossier())).orElse(List.of());
-                out.println("Dossier de " + Affichage.titre(n.numero(), c) + " : jusqu'à " + (1 + reglages.generation().revisionsMax())
+                out.println("Dossier de " + Libelles.titre(n.numero(), c) + " : jusqu'à " + (1 + reglages.generation().revisionsMax())
                         + " passe(s) de trois appels à " + reglages.modeleCapable() + ".");
                 if (!reprises.isEmpty()) {
                     out.println(reprises.size() + " phrase(s) de votre main reportée(s) telles quelles : le modèle n'en choisit que "
@@ -154,9 +155,9 @@ final class Dossiers {
                 versionValidee(out, n, v, offre, racine().horloge().getZone());
                 return 0;
             }
-            out.println("Dossier de " + Affichage.titre(n.numero(), n.candidature()) + ", généré le "
-                    + Affichage.date(LocalDate.ofInstant(d.genereLe(), racine().horloge().getZone()))
-                    + d.corrigeLe().map(le -> ", corrigé le " + Affichage.date(LocalDate.ofInstant(le, racine().horloge().getZone())))
+            out.println("Dossier de " + Libelles.titre(n.numero(), n.candidature()) + ", généré le "
+                    + Libelles.date(LocalDate.ofInstant(d.genereLe(), racine().horloge().getZone()))
+                    + d.corrigeLe().map(le -> ", corrigé le " + Libelles.date(LocalDate.ofInstant(le, racine().horloge().getZone())))
                             .orElse("") + ".");
             Path profil = racine().donnees().fichierProfil();
             if (Files.exists(profil) && !racine().donnees().lireProfil(profil).empreinte().equals(d.empreinteProfil())) {
@@ -195,7 +196,7 @@ final class Dossiers {
     /** Une version validée telle qu'elle a été figée : l'offre, le dossier, et ce qui justifie chaque phrase (CA-6.10). */
     private static void versionValidee(PrintWriter out, Numerotee n, VersionValidee v, Optional<Offre> offre, ZoneId zone) {
         boolean envoyee = n.candidature().versionEnvoyee().equals(Optional.of(v.version()));
-        out.println("Version " + v.version() + " du dossier de " + Affichage.titre(n.numero(), n.candidature()) + ", validée le "
+        out.println("Version " + v.version() + " du dossier de " + Libelles.titre(n.numero(), n.candidature()) + ", validée le "
                 + date(v.valideLe(), zone) + (envoyee ? ", c'est celle qui a été envoyée." : "."));
         Path repertoire = Path.of(v.repertoire());
         out.println(Files.isDirectory(repertoire) ? "Répertoire : " + repertoire
@@ -216,7 +217,7 @@ final class Dossiers {
     }
 
     static String date(Instant instant, ZoneId zone) {
-        return Affichage.date(LocalDate.ofInstant(instant, zone));
+        return Libelles.date(LocalDate.ofInstant(instant, zone));
     }
 
     /**
@@ -429,7 +430,7 @@ final class Dossiers {
                     throw e;
                 }
 
-                out.println("Dossier de " + Affichage.titre(n.numero(), c) + " validé : version " + version + ", figée (RG-15)."
+                out.println("Dossier de " + Libelles.titre(n.numero(), c) + " validé : version " + version + ", figée (RG-15)."
                         + (version > 1 ? " La version " + (version - 1) + " reste conservée." : ""));
                 if (c.etape() != Etape.PRETE) {
                     out.println("Candidature passée à l'étape « prête ». Après l'envoi, fait par vous : postulat avancer " + numero
@@ -714,7 +715,7 @@ final class Dossiers {
     }
 
     private static String cout(CoutModele avant, CoutModele apres) {
-        return Affichage.appels(apres.appels() - avant.appels()) + ", "
-                + Affichage.dollars(apres.coutMicroDollars() - avant.coutMicroDollars());
+        return Libelles.appels(apres.appels() - avant.appels()) + ", "
+                + Libelles.dollars(apres.coutMicroDollars() - avant.coutMicroDollars());
     }
 }

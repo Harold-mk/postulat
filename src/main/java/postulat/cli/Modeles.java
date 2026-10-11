@@ -5,6 +5,7 @@ import java.time.YearMonth;
 import java.util.Map;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import postulat.libelles.Libelles;
 import postulat.ia.Consommation;
 import postulat.ia.Demande;
 import postulat.ia.Gamme;
@@ -51,7 +52,7 @@ final class Modeles {
                 Reponse<Salut> r = modele(base, reglages)
                         .demander(Demande.horsCandidature("essai", gamme, CONSIGNES, CONTENU), Salut.class);
                 PrintWriter out = sortie();
-                out.println("Modèle " + modele + " (gamme " + Affichage.gamme(gamme) + ") : « " + r.valeur().message() + " »");
+                out.println("Modèle " + modele + " (gamme " + Libelles.gamme(gamme) + ") : « " + r.valeur().message() + " »");
                 out.println(consommation(r.consommation()));
                 out.println("L'appel est journalisé. Cumul : postulat modele couts");
             }
@@ -61,7 +62,7 @@ final class Modeles {
         static String consommation(Consommation c) {
             return "Consommation : " + c.jetonsEntree() + " jetons en entrée, " + c.jetonsSortie() + " en sortie, "
                     + c.jetonsCacheLus() + " lus en cache, " + c.jetonsCacheEcrits() + " écrits en cache — coût "
-                    + Affichage.dollars(c.coutMicroDollars()) + ", " + c.duree().toMillis() + " ms.";
+                    + Libelles.dollars(c.coutMicroDollars()) + ", " + c.duree().toMillis() + " ms.";
         }
     }
 
@@ -83,12 +84,12 @@ final class Modeles {
             int appels = 0;
             long total = 0;
             for (var mois : parMois.entrySet()) {
-                out.println("  " + mois.getKey() + "   " + Affichage.appels(mois.getValue().appels()) + "   "
-                        + Affichage.dollars(mois.getValue().coutMicroDollars()));
+                out.println("  " + mois.getKey() + "   " + Libelles.appels(mois.getValue().appels()) + "   "
+                        + Libelles.dollars(mois.getValue().coutMicroDollars()));
                 appels += mois.getValue().appels();
                 total += mois.getValue().coutMicroDollars();
             }
-            out.println("  total     " + Affichage.appels(appels) + "   " + Affichage.dollars(total));
+            out.println("  total     " + Libelles.appels(appels) + "   " + Libelles.dollars(total));
             return 0;
         }
     }

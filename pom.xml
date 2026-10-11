@@ -19,6 +19,9 @@
         <snakeyaml-engine.version>3.1.1</snakeyaml-engine.version>
         <anthropic-java.version>2.65.0</anthropic-java.version>
         <pdfbox.version>3.0.8</pdfbox.version>
+        <!-- JavaFX 21, la version LTS qui tourne sur Java 21 ; AtlantaFX 2.0.1, la dernière qui n'exige pas plus. -->
+        <javafx.version>21.0.12</javafx.version>
+        <atlantafx.version>2.0.1</atlantafx.version>
         <!-- Rempli par JaCoCo ; vide par défaut pour que surefire démarre aussi sans lui. -->
         <argLine></argLine>
     </properties>
@@ -47,6 +50,25 @@
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
             <version>${pdfbox.version}</version>
+        </dependency>
+        <!-- Interface de bureau (itération 9) : JavaFX, et un thème moderne. Le POM de JavaFX choisit
+             lui-même les bibliothèques natives du système qui construit : ici, Windows. -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.mkpaz</groupId>
+            <artifactId>atlantafx-base</artifactId>
+            <version>${atlantafx.version}</version>
+            <exclusions>
+                <!-- il déclare JavaFX 20 ; c'est le 21 ci-dessus qui sert -->
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <!-- Le SDK journalise par SLF4J ; sans ce branchement « muet », chaque commande afficherait
              trois lignes d'avertissement. postulat a son propre journal, celui des appels en base. -->
