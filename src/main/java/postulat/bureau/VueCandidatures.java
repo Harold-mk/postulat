@@ -68,7 +68,7 @@ final class VueCandidatures {
         });
         depuis.setPrefWidth(110);
         table.getColumns().add(depuis);
-        table.setPlaceholder(new Label(toutes.isEmpty() ? "Aucune candidature pour l'instant : « Nouvelle candidature », en haut."
+        table.setPlaceholder(new Label(toutes.isEmpty() ? "Aucune candidature pour l'instant : « Nouvelle offre » ou « Candidature faite ailleurs », en haut."
                 : "Aucune candidature ne correspond."));
         table.setRowFactory(t -> {
             TableRow<Numerotee> ligne = new TableRow<>();

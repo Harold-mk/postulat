@@ -1,5 +1,7 @@
 package postulat.bureau;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -11,11 +13,16 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
+import postulat.cas.CasDossier;
+import postulat.cas.CasOffre;
+import postulat.cas.Contexte;
 import postulat.ia.Modele;
+import postulat.production.Profil;
 import postulat.stockage.Base;
 import postulat.stockage.CoutModele;
 import postulat.stockage.Donnees;
 import postulat.stockage.DossierGenere;
+import postulat.stockage.LectureProfil;
 import postulat.stockage.Numerotee;
 import postulat.stockage.Offre;
 import postulat.stockage.Reglages;
@@ -86,6 +93,44 @@ public final class Session {
 
     Function<Reglages, Modele> fabriqueModele() {
         return fabriqueModele;
+    }
+
+    // --- offres et dossiers : les mêmes cas que la ligne de commande ---
+
+    private Contexte contexte() {
+        return new Contexte(donnees, horloge, fabriqueModele);
+    }
+
+    /** Soumettre, analyser et rapprocher une offre (UC-05). */
+    public CasOffre offres() {
+        return new CasOffre(contexte());
+    }
+
+    /** Générer, corriger, réévaluer et valider un dossier, en verser une phrase au profil (UC-04, UC-07 à UC-09). */
+    public CasDossier dossiers() {
+        return new CasDossier(contexte());
+    }
+
+    /** Le profil, s'il se lit sans problème : ses faits, pour y verser une phrase (UC-04). */
+    public Optional<Profil> profil() {
+        Path fichier = donnees.fichierProfil();
+        if (!Files.exists(fichier)) {
+            return Optional.empty();
+        }
+        LectureProfil lecture = donnees.lireProfil(fichier);
+        return lecture.estUtilisable() ? lecture.profil() : Optional.empty();
+    }
+
+    /** Vrai si le profil a changé depuis la génération du dossier : celui-ci n'en tient pas compte. */
+    public boolean profilAChange(DossierGenere dossier) {
+        Path fichier = donnees.fichierProfil();
+        return Files.exists(fichier) && !donnees.lireProfil(fichier).empreinte().equals(dossier.empreinteProfil());
+    }
+
+    /** L'aperçu PDF du CV ({@code "cv"}) ou de la lettre ({@code "lettre"}), s'il a été écrit. */
+    public Optional<Path> apercu(long numero, String document) {
+        Path fichier = dossiers().repertoireApercus().resolve(CasDossier.fichierApercu(numero, document));
+        return Files.exists(fichier) ? Optional.of(fichier) : Optional.empty();
     }
 
     // --- lire ---

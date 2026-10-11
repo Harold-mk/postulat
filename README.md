@@ -24,7 +24,7 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 8d | Phrases versées au profil (UC-04) | ✅ |
 | 8e | Import d'un CV existant pour amorcer le profil (UC-02) | ✅ |
 | 9a | Interface de bureau : tableau de bord, actions du jour, candidatures et leurs saisies | ✅ |
-| 9b | Interface de bureau : offres et dossiers — analyse, génération, correction phrase à phrase, validation | à venir |
+| 9b | Interface de bureau : offres et dossiers — analyse, génération, correction phrase à phrase, validation | ✅ |
 | 9c | Empaquetage Windows par `jpackage` | à venir |
 
 ## Ce qui fonctionne aujourd'hui
@@ -38,6 +38,15 @@ aucun modèle de langage.
   d'où l'on avance, écarte, rouvre, relance, note un entretien, un échange, un contact. Les boutons ne
   proposent que ce que l'étape permet, et un refus du domaine laisse la saisie ouverte pour la
   corriger. Elle lit et écrit les mêmes données que la ligne de commande, par les mêmes règles.
+
+  On y soumet aussi une offre, collée ou lue d'un fichier texte, et l'on voit chaque exigence
+  couverte ou en lacune, les faits qui la couvrent et la note d'adéquation, avant de décider. Le
+  dossier s'y génère en arrière-plan, dans une boîte qui montre chaque passe, sa durée et son coût.
+  Chaque phrase s'y lit numérotée, son origine en pastille : les faits du profil qu'elle cite,
+  l'offre, ou votre main. D'un menu, elle se réécrit, se retire ou se verse au profil ; une puce
+  retirée faute de place se remet. Le dossier se fait réévaluer et se valide ; ses aperçus, et le
+  répertoire de chaque version validée, s'ouvrent dans les applications de Windows. Ces cas
+  d'utilisation sont écrits une seule fois, dans `cas/`, pour la fenêtre et pour la ligne de commande.
 
 - **Un pipeline de 11 étapes** (`repérée` → `à_préparer` → `prête` → `envoyée` → `entretien` →
   `offre_reçue` → `acceptée`, plus cinq issues terminales). Les transitions autorisées sont
@@ -246,6 +255,8 @@ postulat/
                 DOCX écrit à la main
   libelles/     la mise en mots du domaine, en français : dates,
                 étapes, échéances — commune aux deux interfaces
+  cas/          les cas d'utilisation des offres et des dossiers,
+                écrits une fois pour les deux interfaces
   cli/          ligne de commande                                  picocli
   bureau/       interface de bureau ; Session, sans rien de        javafx,
                 graphique, en est la façade testable               atlantafx

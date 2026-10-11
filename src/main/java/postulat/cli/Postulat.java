@@ -20,6 +20,7 @@ import picocli.CommandLine.ScopeType;
 import picocli.CommandLine.Spec;
 import picocli.CommandLine.TypeConversionException;
 import picocli.CommandLine.UnmatchedArgumentException;
+import postulat.cas.Refus;
 import postulat.ia.ErreurModele;
 import postulat.ia.Modele;
 import postulat.ia.ModeleAnthropic;

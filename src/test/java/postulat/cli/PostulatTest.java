@@ -14,7 +14,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Nested;
@@ -22,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 import picocli.CommandLine.TypeConversionException;
-import postulat.ia.AnalyseOffre.ExigenceLue;
+import postulat.JeuDEssai;
 import postulat.ia.AnalyseOffre.FicheOffre;
 import postulat.ia.Demande;
 import postulat.ia.RapprochementOffre.CouvertureLue;
@@ -32,14 +31,11 @@ import postulat.ia.FauxModele;
 import postulat.ia.Gamme;
 import postulat.ia.GenerationDossier.AvisLu;
 import postulat.ia.GenerationDossier.BlocGenere;
-import postulat.ia.GenerationDossier.CritereLu;
 import postulat.ia.GenerationDossier.CvGenere;
 import postulat.ia.GenerationDossier.LettreGeneree;
 import postulat.ia.GenerationDossier.PhraseGeneree;
-import postulat.ia.GenerationDossier.PhraseLettre;
 import postulat.ia.GenerationDossier.PuceGeneree;
 import postulat.ia.GenerationDossier.SectionGeneree;
-import postulat.production.Critere;
 
 /** Tests de bout en bout : de vraies commandes, une vraie base dans un répertoire temporaire, un jour fixe. */
 class PostulatTest {
@@ -493,21 +489,7 @@ class PostulatTest {
     @Nested
     class LeProfil {
 
-        static final String VALIDE = """
-                identite: {nom: Camille Martin, titre: Étudiante en master data, contact: camille@exemple.test}
-                experiences:
-                  - id: exp-acme
-                    poste: Stagiaire data analyst
-                    organisation: Acme
-                    periode: 2025-01 à 2025-06
-                    realisations:
-                      - {id: exp-acme-r1, objectif: Suivre les ventes, tache: Tableau de bord Power BI}
-                      - {id: exp-acme-r2, objectif: Fiabiliser les données, tache: Contrôles SQL quotidiens}
-                formations:
-                  - {id: form-master, diplome: Master data, etablissement: Université Lumière, periode: 2024 à 2026}
-                competences:
-                  - {id: comp-sql, nom: SQL}
-                """;
+        static final String VALIDE = JeuDEssai.PROFIL;
 
         @Test
         void l_initialisation_ecrit_un_gabarit_dans_le_repertoire_des_donnees() {
@@ -666,17 +648,11 @@ class PostulatTest {
     @Nested
     class LesOffres {
 
-        static final String TEXTE = "Acme, éditeur lyonnais de logiciels de gestion, recrute un stagiaire data analyst pour six "
-                + "mois à partir de mars 2027. Missions : construire des tableaux de bord et fiabiliser les données. "
-                + "Profil : maîtrise de SQL exigée ; une connaissance de Tableau serait un plus.";
+        static final String TEXTE = JeuDEssai.OFFRE;
 
-        static final FicheOffre FICHE = new FicheOffre("Stagiaire data analyst", "Acme", "Lyon", "stage", "mars 2027", "6 mois", "",
-                List.of("Construire des tableaux de bord", "Fiabiliser les données"),
-                List.of(new ExigenceLue("SQL", true), new ExigenceLue("Tableau", false)));
+        static final FicheOffre FICHE = JeuDEssai.FICHE;
 
-        static final RapprochementLu RAPPROCHEMENT = new RapprochementLu(List.of(
-                new CouvertureLue(1, List.of("comp-sql", "exp-acme-r1"), "SQL avancé."),
-                new CouvertureLue(2, List.of(), "Seul Power BI est pratiqué.")), 72, "Bonne base.");
+        static final RapprochementLu RAPPROCHEMENT = JeuDEssai.RAPPROCHEMENT;
 
         Path offre() throws IOException {
             return Files.writeString(dossier.resolve("offre-acme.txt"), TEXTE);
@@ -871,29 +847,15 @@ class PostulatTest {
         static final String FIN = System.lineSeparator();
 
         static CvGenere cv(String puce) {
-            return new CvGenere(List.of(
-                    new SectionGeneree("Expériences", List.of(new BlocGenere(new PhraseGeneree("Stagiaire data analyst — Acme",
-                            List.of("exp-acme"), ""), new PhraseGeneree("2025", List.of("exp-acme"), ""),
-                            List.of(new PuceGeneree(puce, List.of("exp-acme-r1"), 1, ""),
-                                    new PuceGeneree("Mis en place des contrôles SQL quotidiens", List.of("exp-acme-r2"), 2, "")))), List.of()),
-                    new SectionGeneree("Compétences", List.of(), List.of(new PhraseGeneree("SQL", List.of("comp-sql"), "")))));
+            return JeuDEssai.cv(puce);
         }
 
-        static final CvGenere CV = cv("Suivi des ventes sous Power BI");
+        static final CvGenere CV = JeuDEssai.CV;
 
-        static final LettreGeneree LETTRE = new LettreGeneree(
-                List.of(new PhraseLettre("Acme, éditeur lyonnais de logiciels de gestion, cherche un stagiaire data analyst pour six "
-                        + "mois à partir de mars 2027.", "offre", List.of(), "")),
-                List.of(new PhraseLettre("Lors de mon stage chez Acme, j'ai suivi les ventes sous Power BI et mis en place des "
-                        + "contrôles SQL quotidiens.", "faits", List.of("exp-acme-r1", "exp-acme-r2"), ""),
-                        new PhraseLettre("Mon master data à l'Université Lumière complète cette pratique.", "faits",
-                                List.of("form-master"), "")),
-                List.of(new PhraseLettre("Fiabiliser vos données avec vous serait pour moi une suite naturelle, et j'aimerais en "
-                        + "parler lors d'un entretien.", "faits", List.of("exp-acme-r2"), "")));
+        static final LettreGeneree LETTRE = JeuDEssai.LETTRE;
 
         static AvisLu avis(int note) {
-            return new AvisLu(Arrays.stream(Critere.values()).map(c -> new CritereLu(c.name(), note, "Solide.")).toList(),
-                    List.of("Preuves précises"), List.of(), List.of("Citez Tableau", "Resserrez l'objet"));
+            return JeuDEssai.avis(note);
         }
 
         /** Une offre analysée et rapprochée, poursuivie : la candidature n° 1 attend son dossier. */
@@ -1372,9 +1334,9 @@ class PostulatTest {
 
         @Test
         void un_nom_de_repertoire_se_plie_a_ce_que_windows_accepte() {
-            assertThat(Dossiers.nomDeFichier("1 A<b>c:d/e\\f|g?h*i. ")).isEqualTo("1 A b c d e f g h i");
-            assertThat(Dossiers.nomDeFichier(" ... ")).isEqualTo("candidature");
-            assertThat(Dossiers.nomDeFichier("x".repeat(100))).hasSize(80);
+            assertThat(postulat.cas.CasDossier.nomDeFichier("1 A<b>c:d/e\\f|g?h*i. ")).isEqualTo("1 A b c d e f g h i");
+            assertThat(postulat.cas.CasDossier.nomDeFichier(" ... ")).isEqualTo("candidature");
+            assertThat(postulat.cas.CasDossier.nomDeFichier("x".repeat(100))).hasSize(80);
         }
     }
 

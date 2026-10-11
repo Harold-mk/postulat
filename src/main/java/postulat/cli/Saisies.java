@@ -7,6 +7,7 @@ import java.util.Optional;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import postulat.cas.Refus;
 import postulat.libelles.Libelles;
 import postulat.stockage.Base;
 import postulat.stockage.Numerotee;

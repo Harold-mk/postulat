@@ -51,8 +51,12 @@ final class VueFiche {
         grille.add(Ui.rubrique("Échéances", echeances(fiche.echeances(), aujourdhui)), 0, 0);
         grille.add(Ui.rubrique("Contacts", contacts(fiche.contacts())), 1, 0);
         grille.add(Ui.rubrique("Historique", historique(c)), 0, 1);
-        grille.add(Ui.rubrique("Offre", offre(fiche)), 1, 1);
-        grille.add(Ui.rubrique("Dossier", dossier(fiche, s)), 0, 2);
+        grille.add(Ui.rubrique("Offre", fiche.offre().isEmpty() ? offre(fiche)
+                : new VBox(6, offre(fiche), lien("Voir l'offre →", () -> f.ouvrirOffre(numero)))), 1, 1);
+        Node dossier = dossier(fiche, s);
+        grille.add(Ui.rubrique("Dossier", fiche.dossier().isPresent() || !fiche.versions().isEmpty()
+                        || c.etape() == Etape.A_PREPARER || c.etape() == Etape.PRETE
+                ? new VBox(6, dossier, lien("Ouvrir le dossier →", () -> f.ouvrirDossier(numero))) : dossier), 0, 2);
         grille.add(Ui.rubrique("Modèle de langage", Ui.discret(fiche.cout().appels() == 0 ? "aucun appel"
                 : Libelles.appels(fiche.cout().appels()) + ", " + Libelles.dollars(fiche.cout().coutMicroDollars()))), 1, 2);
 
@@ -76,15 +80,7 @@ final class VueFiche {
             barre.getChildren().add(avancer);
         }
         if (etape.peutAllerVers(Etape.ECARTEE)) {
-            barre.getChildren().add(bouton("Écarter…", () -> {
-                Formulaire fo = new Formulaire("Écarter cette offre", "Ne pas postuler, en disant pourquoi : le motif sert à "
-                        + "comprendre, plus tard, ce qu'on écarte. L'offre et son analyse restent conservées.");
-                var motif = fo.paragraphe("Motif");
-                var jour = fo.date("Le", s.aujourdhui());
-                if (fo.afficher(() -> s.ecarter(numero, motif.getText(), jour.getValue()))) {
-                    f.rafraichir();
-                }
-            }));
+            barre.getChildren().add(bouton("Écarter…", () -> ecarter(f, s, numero)));
         }
         if (etape.estTerminale()) {
             MenuButton rouvrir = new MenuButton("Rouvrir à…");
@@ -161,8 +157,19 @@ final class VueFiche {
         return barre;
     }
 
+    /** UC-06 : ne pas postuler, en disant pourquoi. */
+    static void ecarter(Fenetre f, Session s, long numero) {
+        Formulaire fo = new Formulaire("Écarter cette offre", "Ne pas postuler, en disant pourquoi : le motif sert à "
+                + "comprendre, plus tard, ce qu'on écarte. L'offre et son analyse restent conservées.");
+        var motif = fo.paragraphe("Motif");
+        var jour = fo.date("Le", s.aujourdhui());
+        if (fo.afficher(() -> s.ecarter(numero, motif.getText(), jour.getValue()))) {
+            f.rafraichir();
+        }
+    }
+
     /** Une saisie qui ne demande qu'une date : celle du jour, par défaut. */
-    private static void date(Fenetre f, String titre, LocalDate parDefaut, java.util.function.Consumer<LocalDate> action) {
+    static void date(Fenetre f, String titre, LocalDate parDefaut, java.util.function.Consumer<LocalDate> action) {
         Formulaire fo = new Formulaire(titre, "");
         var jour = fo.date("Le", parDefaut);
         if (fo.afficher(() -> action.accept(jour.getValue()))) {
@@ -171,14 +178,14 @@ final class VueFiche {
     }
 
     private static Button bouton(String texte, Runnable action) {
-        Button b = new Button(texte);
-        b.setOnAction(x -> {
-            try {
-                action.run();
-            } catch (RuntimeException ex) {
-                Ui.alerte(ex);
-            }
-        });
+        return Ui.bouton(texte, action);
+    }
+
+    /** Un lien vers une page détaillée, sous le résumé d'une rubrique. */
+    private static Button lien(String texte, Runnable action) {
+        Button b = Ui.bouton(texte, action);
+        b.getStyleClass().addAll(Styles.FLAT, Styles.ACCENT);
+        b.setPadding(javafx.geometry.Insets.EMPTY);
         return b;
     }
 

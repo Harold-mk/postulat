@@ -3,13 +3,16 @@ package postulat.bureau;
 import atlantafx.base.theme.Styles;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Dialog;
@@ -28,6 +31,7 @@ final class Formulaire {
 
     private final Dialog<ButtonType> dialogue = new Dialog<>();
     private final GridPane grille = new GridPane();
+    private final Map<Node, Label> libelles = new HashMap<>();
     private int lignes;
 
     Formulaire(String titre, String explication) {
@@ -51,21 +55,25 @@ final class Formulaire {
     TextField texte(String libelle, String valeur) {
         TextField t = new TextField(valeur);
         t.setPrefColumnCount(28);
-        return ajouter(libelle, t);
+        return champ(libelle, t);
     }
 
     TextArea paragraphe(String libelle) {
-        TextArea t = new TextArea();
-        t.setPrefRowCount(4);
+        return paragraphe(libelle, "", 4);
+    }
+
+    TextArea paragraphe(String libelle, String valeur, int rangs) {
+        TextArea t = new TextArea(valeur);
+        t.setPrefRowCount(rangs);
         t.setPrefColumnCount(28);
         t.setWrapText(true);
-        return ajouter(libelle, t);
+        return champ(libelle, t);
     }
 
     DatePicker date(String libelle, LocalDate valeur) {
         DatePicker d = new DatePicker(valeur);
         d.setConverter(new LocalDateStringConverter(DateTimeFormatter.ofPattern("dd/MM/uuuu"), null));
-        return ajouter(libelle, d);
+        return champ(libelle, d);
     }
 
     <T> ComboBox<T> choix(String libelle, List<T> valeurs, T valeur, Function<T, String> nom) {
@@ -82,14 +90,50 @@ final class Formulaire {
                 return null;
             }
         });
-        return ajouter(libelle, c);
+        return champ(libelle, c);
     }
 
-    private <N extends Node> N ajouter(String libelle, N champ) {
-        grille.add(new Label(libelle), 0, lignes);
+    /** Une case à cocher, sur toute la largeur. */
+    CheckBox caseACocher(String libelle) {
+        CheckBox c = new CheckBox(libelle);
+        c.setWrapText(true);
+        c.setMaxWidth(420);
+        grille.add(c, 1, lignes++);
+        return c;
+    }
+
+    /** N'importe quel champ, son libellé à gauche. */
+    <N extends Node> N champ(String libelle, N champ) {
+        Label l = new Label(libelle);
+        libelles.put(champ, l);
+        grille.add(l, 0, lignes);
         grille.add(champ, 1, lignes++);
         GridPane.setHgrow(champ, Priority.ALWAYS);
         return champ;
+    }
+
+    /** Montre ou cache un champ et son libellé : la ligne cachée ne prend pas de place. */
+    void montrer(Node champ, boolean visible) {
+        for (Node n : new Node[] {champ, libelles.get(champ)}) {
+            if (n != null) {
+                n.setVisible(visible);
+                n.setManaged(visible);
+            }
+        }
+        if (dialogue.getDialogPane().getScene() != null && dialogue.getDialogPane().getScene().getWindow() != null) {
+            dialogue.getDialogPane().getScene().getWindow().sizeToScene();
+        }
+    }
+
+    /** Le champ d'un libellé, ou la case à cocher de ce texte : pour qu'un pilote le remplisse. */
+    Node champ(String libelle) {
+        return libelles.entrySet().stream().filter(e -> e.getValue().getText().equals(libelle)).map(Map.Entry::getKey).findFirst()
+                .or(() -> grille.getChildren().stream().filter(n -> n instanceof CheckBox c && c.getText().equals(libelle)).findFirst())
+                .orElseThrow(() -> new IllegalArgumentException("Aucun champ « " + libelle + " » dans « " + titre() + " »."));
+    }
+
+    String titre() {
+        return dialogue.getHeaderText();
     }
 
     /** Le panneau de la boîte, sans l'ouvrir : pour la voir telle qu'elle s'affichera. */
@@ -104,6 +148,14 @@ final class Formulaire {
      * @return vrai si l'enregistrement a eu lieu
      */
     boolean afficher(Runnable enregistrer) {
+        Pilote pilote = Pilote.Actif.pilote;
+        if (pilote != null) {
+            if (!pilote.remplir(this)) {
+                return false;
+            }
+            enregistrer.run();
+            return true;
+        }
         boolean[] fait = {false};
         dialogue.getDialogPane().lookupButton(ButtonType.OK).addEventFilter(ActionEvent.ACTION, e -> {
             try {
