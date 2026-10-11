@@ -1179,6 +1179,106 @@ class PostulatTest {
                     + "vont de 1 à 1.");
         }
 
+        // --- UC-04 : verser une phrase au profil ---
+
+        String profilYaml() throws IOException {
+            return Files.readString(dossier.resolve("profil.yaml"));
+        }
+
+        @Test
+        void une_phrase_versee_devient_un_fait_que_la_regeneration_cite() throws IOException {
+            dossierGenere(CV);
+            Resultat modifiee = reussi("dossier", "modifier", "1", "3", "Bâti le suivi hebdomadaire des ventes sous Power BI");
+            assertThat(modifiee.sortie()).contains("Pour en faire un fait du profil, que les prochaines générations pourront citer "
+                    + "(CA-3.9) : postulat dossier verser 1 3 --objectif \"…\"");
+
+            Resultat r = reussi("dossier", "verser", "1", "3", "--objectif", "Suivre les ventes chaque semaine", "--resultat",
+                    "partagé à toute l'équipe", "--competences", "Power BI, SQL");
+
+            assertThat(r.sortie()).contains("Fait « exp-acme-r3 » ajouté au profil :" + FIN + "  Suivre les ventes chaque semaine" + FIN
+                            + "  Bâti le suivi hebdomadaire des ventes sous Power BI" + FIN + "  partagé à toute l'équipe" + FIN
+                            + "  Power BI, SQL")
+                    .contains("Ancienne version du profil conservée : " + dossier.resolve("profils").resolve("profil-20261010-083000-"))
+                    .contains("La phrase n° 3 reste de votre main dans ce dossier (RG-23)");
+            assertThat(profilYaml()).isEqualTo(LeProfil.VALIDE.replace("""
+                          - {id: exp-acme-r2, objectif: Fiabiliser les données, tache: Contrôles SQL quotidiens}
+                    """, """
+                          - {id: exp-acme-r2, objectif: Fiabiliser les données, tache: Contrôles SQL quotidiens}
+                          - {id: exp-acme-r3, objectif: "Suivre les ventes chaque semaine", tache: "Bâti le suivi hebdomadaire des \
+                    ventes sous Power BI", resultat: "partagé à toute l'équipe", competences: ["Power BI", "SQL"]}
+                    """));
+            assertThat(Files.list(dossier.resolve("profils")).toList()).singleElement()
+                    .satisfies(v -> assertThat(Files.readString(v)).isEqualTo(LeProfil.VALIDE));
+            assertThat(reussi("profil", "verifier").code()).isZero();
+            assertThat(reussi("dossier", "voir", "1").sortie())
+                    .contains("   3    • Bâti le suivi hebdomadaire des ventes sous Power BI [de votre main, versée au profil : exp-acme-r3]");
+            assertThat(faux.demandes()).hasSize(5);
+
+            faux.repondre(CV).repondre(LETTRE).repondre(avis(5));
+            Resultat regeneree = reussi("dossier", "generer", "1");
+            assertThat(regeneree.sortie()).doesNotContain("reportée(s) telles quelles");
+            assertThat(faux.demandes().get(5).contenu()).doesNotContain("Phrases de l'auteur");
+            assertThat(faux.demandes().get(5).consignes()).contains("[exp-acme-r3] Réalisation (dans exp-acme) : objectif : Suivre les "
+                    + "ventes chaque semaine ; tâche : Bâti le suivi hebdomadaire des ventes sous Power BI");
+        }
+
+        @Test
+        void ce_qui_se_verse_est_une_phrase_de_votre_main_rangee_quelque_part() throws IOException {
+            dossierGenere(CV);
+            assertThat(postulat("dossier", "verser", "1", "3", "--objectif", "x").erreurs()).contains("n'est pas de votre main");
+            reussi("dossier", "modifier", "1", "3", "Bâti le suivi hebdomadaire des ventes");
+            reussi("dossier", "modifier", "1", "7", "J'ai animé des ateliers internes pour diffuser la pratique des tableaux.");
+
+            assertThat(postulat("dossier", "verser", "1", "3").erreurs()).contains("Il manque l'objectif de cette réalisation");
+            assertThat(postulat("dossier", "verser", "1", "7", "--objectif", "Partager").erreurs())
+                    .contains("Précisez sous quelle expérience ou formation ranger cette réalisation : --dans ID. Possibles : exp-acme, "
+                            + "form-master.");
+            assertThat(postulat("dossier", "verser", "1", "7", "--dans", "exp-inconnue", "--objectif", "Partager").erreurs())
+                    .contains("« exp-inconnue » n'est ni une expérience ni une formation du profil.");
+            reussi("dossier", "verser", "1", "7", "--dans", "exp-acme", "--objectif", "Partager la pratique", "--distinct");
+            assertThat(postulat("dossier", "verser", "1", "7", "--dans", "exp-acme", "--objectif", "x").erreurs())
+                    .contains("déjà versée au profil, dans le fait « exp-acme-r3 »");
+            assertThat(profilYaml()).doesNotContain("Bâti le suivi");
+            assertThat(Files.list(dossier.resolve("profils")).count()).isEqualTo(1);
+        }
+
+        /** UC-04 A2 : une phrase qui redit un fait se propose de l'enrichir plutôt que d'en créer un second. */
+        @Test
+        void une_phrase_qui_redit_un_fait_propose_de_l_enrichir() throws IOException {
+            dossierGenere(CV);
+            reussi("dossier", "modifier", "1", "4", "Mis en place des contrôles SQL quotidiens automatisés");
+
+            Resultat redite = postulat("dossier", "verser", "1", "4", "--objectif", "Fiabiliser");
+
+            assertThat(redite.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(redite.erreurs()).contains("Cette phrase semble redire le fait « exp-acme-r2 » : Contrôles SQL quotidiens.")
+                    .contains("--enrichir exp-acme-r2 --resultat \"…\"").contains("--distinct");
+            assertThat(postulat("dossier", "verser", "1", "4", "--enrichir", "exp-acme-r2").erreurs())
+                    .contains("Dites ce que la phrase apporte au fait « exp-acme-r2 »");
+
+            Resultat r = reussi("dossier", "verser", "1", "4", "--enrichir", "exp-acme-r2", "--resultat", "contrôles désormais automatisés");
+
+            assertThat(r.sortie()).contains("Fait « exp-acme-r2 » enrichi dans le profil :");
+            assertThat(profilYaml()).contains("- {id: exp-acme-r2, objectif: Fiabiliser les données, tache: Contrôles SQL quotidiens, "
+                    + "resultat: \"contrôles désormais automatisés\"}");
+            assertThat(reussi("dossier", "voir", "1").sortie()).contains("[de votre main, versée au profil : exp-acme-r2]");
+        }
+
+        @Test
+        void une_ligne_de_competences_se_verse_comme_une_competence() throws IOException {
+            dossierGenere(CV);
+            reussi("dossier", "modifier", "1", "5", "SQL, Power BI");
+
+            assertThat(postulat("dossier", "verser", "1", "5", "--competence", "--nom", "sql").erreurs())
+                    .contains("La compétence « SQL » est déjà au profil (comp-sql). Pour la compléter : --enrichir comp-sql");
+            assertThat(reussi("dossier", "verser", "1", "5", "--competence", "--nom", "Power BI", "--niveau", "intermédiaire").sortie())
+                    .contains("Fait « comp-power-bi » ajouté au profil :");
+            assertThat(profilYaml()).endsWith("""
+                      - {id: comp-sql, nom: SQL}
+                      - {id: comp-power-bi, nom: "Power BI", niveau: "intermédiaire"}
+                    """);
+        }
+
         @Test
         void un_nom_de_repertoire_se_plie_a_ce_que_windows_accepte() {
             assertThat(Dossiers.nomDeFichier("1 A<b>c:d/e\\f|g?h*i. ")).isEqualTo("1 A b c d e f g h i");

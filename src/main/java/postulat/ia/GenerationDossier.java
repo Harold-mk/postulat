@@ -161,13 +161,16 @@ public final class GenerationDossier {
      */
     public record Reprise(String reference, boolean dansLeCv, String contexte, String texte) {}
 
-    /** Les phrases de l'auteur d'un dossier, à reporter dans le suivant. */
+    /**
+     * Les phrases de l'auteur d'un dossier, à reporter dans le suivant. Une phrase versée au profil n'y est
+     * plus : devenue un fait, elle suit le régime ordinaire (UC-08 A1, RG-27).
+     */
     public static List<Reprise> reprises(Dossier precedent) {
         List<Reprise> reprises = new ArrayList<>();
         List<Assertion> phrases = precedent.assertions();
         int nCv = precedent.cv().assertions().size();
         for (int i = 0; i < phrases.size(); i++) {
-            if (phrases.get(i).origine() instanceof Origine.Auteur) {
+            if (phrases.get(i).origine() instanceof Origine.Auteur auteur && auteur.verseeDans().isEmpty()) {
                 reprises.add(new Reprise("A" + (reprises.size() + 1), i < nCv,
                         i < nCv ? contexte(precedent.cv(), i) : contexte(precedent.lettre(), i - nCv), phrases.get(i).texte()));
             }

@@ -3,6 +3,7 @@ package postulat.production;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Tout ce qui a été produit pour une candidature à un instant donné (glossaire § 4.2) : le CV ciblé et
@@ -94,6 +95,47 @@ public record Dossier(Cv cv, Lettre lettre, Evaluation evaluation, Rapport rappo
         return i < n
                 ? new Dossier(cv.remplacer(i, nouvelle), lettre, evaluation, rapport)
                 : new Dossier(cv, lettre.remplacer(i - n, nouvelle), evaluation, rapport);
+    }
+
+    /**
+     * Le même dossier, la phrase n° {@code numero} — de l'auteur — marquée comme versée au profil dans
+     * le fait {@code fait} (UC-04). Son origine reste « auteur » : le fait n'existait pas quand elle a
+     * été écrite (RG-23).
+     */
+    public Dossier marquerVersee(int numero, String fait) {
+        Assertion a = phrase(numero);
+        if (!(a.origine() instanceof Origine.Auteur auteur)) {
+            throw new IllegalArgumentException("La phrase n° " + numero + " n'est pas de votre main : elle s'appuie déjà sur le "
+                    + "profil ou sur l'offre. Seule une phrase réécrite à la main se verse au profil (UC-04).");
+        }
+        if (auteur.verseeDans().isPresent()) {
+            throw new IllegalArgumentException("La phrase n° " + numero + " est déjà versée au profil, dans le fait « "
+                    + auteur.verseeDans().get() + " ».");
+        }
+        Assertion versee = new Assertion(a.texte(), new Origine.Auteur(Optional.of(fait)));
+        int i = numero - 1;
+        int n = cv.assertions().size();
+        return i < n
+                ? new Dossier(cv.remplacer(i, versee), lettre, evaluation, rapport)
+                : new Dossier(cv, lettre.remplacer(i - n, versee), evaluation, rapport);
+    }
+
+    /**
+     * Le fait sous lequel verser la phrase n° {@code numero}, quand le dossier le dit : celui que cite
+     * l'intitulé du bloc d'une puce ou d'une précision du CV. Vide pour une phrase de la lettre.
+     */
+    public Optional<String> parentPropose(int numero) {
+        phrase(numero);
+        int i = numero - 1;
+        if (i >= cv.assertions().size()) {
+            return Optional.empty();
+        }
+        Cv.Place p = cv.place(i);
+        if (p.role() != Cv.Role.PUCE && p.role() != Cv.Role.PRECISION) {
+            return Optional.empty();
+        }
+        Cv.Bloc bloc = (Cv.Bloc) cv.sections().get(p.section()).contenus().get(p.contenu());
+        return bloc.intitule().origine() instanceof Origine.Faits f && f.ids().size() == 1 ? Optional.of(f.ids().get(0)) : Optional.empty();
     }
 
     /**

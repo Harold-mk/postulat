@@ -169,7 +169,7 @@ final class Affichage {
         return a.texte() + " " + switch (a.origine()) {
             case Origine.Faits f -> "[" + String.join(", ", f.ids()) + "]";
             case Origine.Offre o -> "[offre]";
-            case Origine.Auteur au -> "[de votre main]";
+            case Origine.Auteur au -> au.verseeDans().map(f -> "[de votre main, versée au profil : " + f + "]").orElse("[de votre main]");
         };
     }
 

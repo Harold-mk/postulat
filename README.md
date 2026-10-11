@@ -21,7 +21,8 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 8a | CV ciblé, lettre, évaluation par filtre ATS et recruteur simulé, révision bornée (UC-07) | ✅ |
 | 8b | Correction manuelle du dossier, régénération qui garde les phrases de l'auteur (UC-08) | ✅ |
 | 8c | Validation : dossier figé, PDF et DOCX dans le répertoire de la candidature (UC-09) | ✅ |
-| 8d | Phrases versées au profil (UC-04), import d'un CV (UC-02) | à venir |
+| 8d | Phrases versées au profil (UC-04) | ✅ |
+| 8e | Import d'un CV existant pour amorcer le profil (UC-02) | à venir |
 | 9 | Interface de bureau | à venir |
 
 ## Ce qui fonctionne aujourd'hui
@@ -119,6 +120,16 @@ La production de documents :
   laquelle a été envoyée. `dossier voir N --version V` la relit telle quelle : l'offre, chaque phrase,
   et le contenu des faits qui la justifiaient. Le DOCX reprend la mise en page du PDF, mais Word
   recalcule ses lignes : c'est le PDF qui garantit la page unique.
+- **Verser une phrase au profil.** Une phrase de votre main peut devenir un fait : `dossier verser`
+  en fait une réalisation, rangée sous l'expérience de son bloc ou celle que vous désignez, ou une
+  compétence. Vous donnez l'objectif et le résultat ; le modèle n'intervient pas. L'identifiant est
+  dérivé et toujours libre. Si la phrase semble redire un fait existant, le système le montre et
+  propose de l'enrichir plutôt que d'en créer un second. Le fait est inséré à sa place dans
+  `profil.yaml` : vos commentaires et votre mise en forme restent, le texte est relu avant de
+  remplacer l'ancien, et l'ancienne version est gardée dans `profils/`. Si l'insertion ne peut se
+  faire sans risque, rien n'est écrit et le texte à ajouter vous est donné. Dans le dossier, la phrase
+  reste de votre main — le fait n'existait pas quand elle a été écrite — mais la régénération
+  suivante ne la reporte plus : elle s'appuie sur le fait, avec toutes les vérifications.
 - **Le modèle de langage est branché** derrière une seule interface,
   `Modele`, et son adaptateur vers l'API Anthropic. Le modèle répond dans une forme imposée (sorties
   structurées), la partie stable des demandes — consignes et profil — est mise en cache, et un refus des classifieurs de
@@ -159,6 +170,7 @@ java -jar target/postulat.jar actions
 | `dossier modifier N PHRASE TEXTE` · `dossier supprimer N PHRASE` · `dossier reintroduire N R1` | corriger à la main, sans modèle : réécrire une phrase, la retirer, remettre une puce retirée faute de place |
 | `dossier evaluer N` | un nouvel avis du recruteur sur le dossier corrigé, en un appel |
 | `dossier valider N` · `dossier voir N --version V` | figer le dossier, écrire ses PDF et DOCX, passer à `prête` ; relire une version validée, justifications comprises |
+| `dossier verser N PHRASE --objectif TEXTE [--dans ID] [--resultat TEXTE]` · `--competence` · `--enrichir ID` | faire d'une phrase de votre main un fait du profil |
 | `modele essai [--gamme capable]` · `modele couts` | vérifier la clé d'API par un appel minuscule ; le cumul des coûts, mois par mois |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
@@ -260,7 +272,8 @@ vraie base SQLite, dans un répertoire temporaire.
 Le profil, la base de suivi et les dossiers produits contiennent des données personnelles. Ils ne
 vivent **jamais** dans ce dépôt, mais dans le répertoire utilisateur du système :
 `%LOCALAPPDATA%\postulat` sous Windows, `$XDG_DATA_HOME/postulat` sous Linux. On y trouve
-`profil.yaml`, `postulat.db`, les dossiers `sauvegardes/`, `apercus/` et `candidatures/` et, s'il existe,
+`profil.yaml`, `postulat.db`, les dossiers `sauvegardes/`, `apercus/`, `candidatures/` et `profils/`
+— les anciennes versions du profil — et, s'il existe,
 `postulat.properties`. L'option
 `--donnees REPERTOIRE` en désigne un autre.
 

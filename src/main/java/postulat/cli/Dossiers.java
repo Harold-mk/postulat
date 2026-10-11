@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,14 +18,19 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import postulat.ia.ErreurModele;
 import postulat.ia.GenerationDossier;
+import postulat.production.Assertion;
 import postulat.production.Ats;
+import postulat.production.Competence;
 import postulat.production.Dossier;
 import postulat.production.Evaluation;
 import postulat.production.Exigence;
+import postulat.production.Fait;
 import postulat.production.Instantane;
 import postulat.production.NoteAts;
 import postulat.production.OffreAnalysee;
 import postulat.production.Profil;
+import postulat.production.Realisation;
+import postulat.production.Recoupement;
 import postulat.production.ReglesGeneration;
 import postulat.production.Tracabilite;
 import postulat.production.Violation;
@@ -33,6 +39,7 @@ import postulat.rendu.Rendu;
 import postulat.stockage.Base;
 import postulat.stockage.CoutModele;
 import postulat.stockage.DossierGenere;
+import postulat.stockage.EcritureProfil;
 import postulat.stockage.ErreurStockage;
 import postulat.stockage.LectureProfil;
 import postulat.stockage.Numerotee;
@@ -54,7 +61,7 @@ final class Dossiers {
     @Command(name = "dossier", description = "Le dossier d'une candidature : CV ciblé et lettre, vérifiés, évalués, corrigés "
             + "et validés (UC-07 à UC-09).",
             subcommands = {Generer.class, Voir.class, Modifier.class, Supprimer.class, Reintroduire.class, Evaluer.class,
-                Valider.class})
+                Valider.class, Verser.class})
     static final class CommandeDossier extends Commande {
 
         @Override
@@ -290,7 +297,9 @@ final class Dossiers {
         @Override
         String compteRendu(Dossier avant, Dossier apres) {
             return "Phrase n° " + phrase + " réécrite, désormais de votre main (RG-27) :" + System.lineSeparator()
-                    + "  « " + apres.phrase(phrase).texte() + " »";
+                    + "  « " + apres.phrase(phrase).texte() + " »" + System.lineSeparator()
+                    + "Pour en faire un fait du profil, que les prochaines générations pourront citer (CA-3.9) : postulat dossier verser "
+                    + numero + " " + phrase + apres.parentPropose(phrase).map(p -> "").orElse(" --dans ID") + " --objectif \"…\"";
         }
     }
 
@@ -486,6 +495,176 @@ final class Dossiers {
             }
         } catch (IOException | java.io.UncheckedIOException ignoree) {
             // l'erreur d'origine dit déjà l'essentiel
+        }
+    }
+
+    @Command(name = "verser", description = "Fait d'une phrase de votre main un fait du profil (UC-04) : une réalisation sous "
+            + "une expérience ou une formation, ou une compétence. La phrase reste de votre main dans ce dossier ; la prochaine "
+            + "génération s'appuiera sur le fait. Aucun appel au modèle.")
+    static final class Verser extends Commande.SurCandidature {
+
+        @Parameters(index = "1", paramLabel = "PHRASE", description = "Numéro de la phrase, de votre main.")
+        int phrase;
+
+        @Option(names = "--dans", paramLabel = "ID", description = "L'expérience ou la formation sous laquelle ranger la réalisation. "
+                + "Par défaut, pour une puce du CV : celle de son bloc.")
+        String dans;
+
+        @Option(names = "--objectif", paramLabel = "TEXTE", description = "Le but de la réalisation : obligatoire pour en créer une.")
+        String objectif;
+
+        @Option(names = "--tache", paramLabel = "TEXTE", description = "Ce qui a été fait. Par défaut : la phrase elle-même.")
+        String tache;
+
+        @Option(names = "--resultat", paramLabel = "TEXTE", description = "Le résultat obtenu, chiffré s'il l'est.")
+        String resultat;
+
+        @Option(names = "--competences", paramLabel = "A,B", split = ",", description = "Les compétences mobilisées.")
+        List<String> competences;
+
+        @Option(names = "--consigne", paramLabel = "TEXTE", description = "Une consigne de présentation pour ce fait.")
+        String consigne;
+
+        @Option(names = "--competence", description = "Verser une compétence plutôt qu'une réalisation.")
+        boolean commeCompetence;
+
+        @Option(names = "--nom", paramLabel = "NOM", description = "Le nom de la compétence. Par défaut : la phrase elle-même.")
+        String nom;
+
+        @Option(names = "--niveau", paramLabel = "NIVEAU", description = "Le niveau de la compétence.")
+        String niveau;
+
+        @Option(names = "--enrichir", paramLabel = "ID", description = "Compléter ce fait existant plutôt que d'en créer un : les "
+                + "champs donnés remplacent les siens (UC-04 A2).")
+        String enrichir;
+
+        @Option(names = "--distinct", description = "Créer le fait même s'il semble redire un fait existant.")
+        boolean distinct;
+
+        @Override
+        public Integer call() {
+            PrintWriter out = sortie();
+            try (Base base = ouvrirBase()) {
+                Numerotee n = trouver(base);
+                DossierGenere g = courant(base, n);
+                Assertion a;
+                try {
+                    a = g.dossier().phrase(phrase);
+                    g.dossier().marquerVersee(phrase, ""); // d'emblée : une phrase de votre main, pas encore versée
+                } catch (IllegalArgumentException e) {
+                    throw new Refus(e.getMessage());
+                }
+                LectureProfil lecture = profilUtilisable();
+                Profil profil = lecture.profil().orElseThrow();
+                EcritureProfil ecriture = new EcritureProfil(racine().donnees().fichierProfil(),
+                        racine().donnees().repertoire().resolve("profils"), racine().horloge().instant());
+
+                Fait verse;
+                EcritureProfil.Ecriture e;
+                try {
+                    if (enrichir != null) {
+                        verse = enrichi(profil, a);
+                        e = ecriture.remplacer(verse);
+                    } else if (commeCompetence) {
+                        verse = competence(profil, a);
+                        e = ecriture.ajouterCompetence((Competence) verse);
+                    } else {
+                        String parent = parent(profil, g.dossier());
+                        verse = realisation(profil, parent, a);
+                        e = ecriture.ajouterRealisation(parent, (Realisation) verse);
+                    }
+                } catch (IllegalArgumentException ex) {
+                    throw new Refus(ex.getMessage());
+                }
+                base.enregistrerDossier(n.candidature().id(), g.avec(g.dossier().marquerVersee(phrase, verse.id())));
+
+                out.println((enrichir != null ? "Fait « " + verse.id() + " » enrichi dans le profil :" : "Fait « " + verse.id()
+                        + " » ajouté au profil :"));
+                Arrays.stream(verse.texte().split("\n")).filter(l -> !l.isBlank()).forEach(l -> out.println("  " + l));
+                out.println("Ancienne version du profil conservée : " + e.ancienneVersion());
+                out.println("La phrase n° " + phrase + " reste de votre main dans ce dossier (RG-23) ; la prochaine génération s'appuiera "
+                        + "sur ce fait, avec toutes les vérifications ordinaires.");
+                out.println("Si profil.yaml est ouvert dans un éditeur, rechargez-le avant d'y retoucher.");
+            }
+            return 0;
+        }
+
+        /** La réalisation à créer, sauf si elle redit un fait existant (UC-04 A2) : on propose alors d'enrichir celui-ci. */
+        private Realisation realisation(Profil profil, String parent, Assertion a) {
+            if (objectif == null || objectif.isBlank()) {
+                throw new Refus("Il manque l'objectif de cette réalisation : --objectif \"…\", le but poursuivi. La tâche reprend votre "
+                        + "phrase ; --tache pour la formuler autrement.");
+            }
+            Realisation r = new Realisation(profil.identifiantDeRealisation(parent), objectif.strip(), tache == null ? a.texte() : tache.strip(),
+                    resultat == null ? "" : resultat.strip(), etiquettes(), consigne == null ? "" : consigne.strip());
+            Optional<Realisation> proche = Recoupement.realisationProche(profil, parent, r.tache() + " " + r.resultat());
+            if (proche.isPresent() && !distinct) {
+                throw new Refus("Cette phrase semble redire le fait « " + proche.get().id() + " » : " + proche.get().tache()
+                        + (proche.get().resultat().isBlank() ? "" : " ; " + proche.get().resultat()) + "." + System.lineSeparator()
+                        + "Pour l'enrichir plutôt que d'en créer un second (UC-04 A2) : --enrichir " + proche.get().id()
+                        + " --resultat \"…\". Pour créer quand même un fait distinct : --distinct");
+            }
+            return r;
+        }
+
+        private Competence competence(Profil profil, Assertion a) {
+            String leNom = nom == null ? a.texte() : nom.strip();
+            Optional<Competence> homonyme = Recoupement.competenceHomonyme(profil, leNom);
+            if (homonyme.isPresent() && !distinct) {
+                throw new Refus("La compétence « " + homonyme.get().nom() + " » est déjà au profil (" + homonyme.get().id() + "). Pour la "
+                        + "compléter : --enrichir " + homonyme.get().id() + " --niveau \"…\". Pour en créer une seconde : --distinct");
+            }
+            return new Competence(profil.identifiantDeCompetence(leNom), leNom, niveau == null ? "" : niveau.strip(),
+                    consigne == null ? "" : consigne.strip());
+        }
+
+        /** Le fait existant, avec les seuls champs donnés remplacés. */
+        private Fait enrichi(Profil profil, Assertion a) {
+            Fait existant = profil.fait(enrichir).orElseThrow(() -> new Refus("Aucun fait « " + enrichir + " » dans le profil."));
+            return switch (existant) {
+                case Realisation r -> {
+                    if (objectif == null && tache == null && resultat == null && competences == null && consigne == null) {
+                        throw new Refus("Dites ce que la phrase apporte au fait « " + enrichir + " » : --resultat \"…\", --tache \"…\", "
+                                + "--objectif, --competences ou --consigne.");
+                    }
+                    yield new Realisation(r.id(), choisir(objectif, r.objectif()), choisir(tache, r.tache()), choisir(resultat, r.resultat()),
+                            competences == null ? r.competences() : etiquettes(), choisir(consigne, r.consigne()));
+                }
+                case Competence c -> {
+                    if (nom == null && niveau == null && consigne == null) {
+                        throw new Refus("Dites ce que la phrase apporte à la compétence « " + enrichir + " » : --niveau, --nom ou --consigne.");
+                    }
+                    yield new Competence(c.id(), choisir(nom, c.nom()), choisir(niveau, c.niveau()), choisir(consigne, c.consigne()));
+                }
+                default -> throw new Refus("« " + enrichir + " » est une expérience ou une formation : seules une réalisation ou une "
+                        + "compétence s'enrichissent depuis une phrase.");
+            };
+        }
+
+        /** L'expérience ou la formation où ranger la réalisation : donnée, ou celle du bloc de la phrase. */
+        private String parent(Profil profil, Dossier d) {
+            String parent = dans != null ? dans.strip() : d.parentPropose(phrase).orElseThrow(() -> new Refus(
+                    "Précisez sous quelle expérience ou formation ranger cette réalisation : --dans ID. Possibles : "
+                            + String.join(", ", parents(profil)) + "."));
+            if (!parents(profil).contains(parent)) {
+                throw new Refus("« " + parent + " » n'est ni une expérience ni une formation du profil. Possibles : "
+                        + String.join(", ", parents(profil)) + ".");
+            }
+            return parent;
+        }
+
+        private static List<String> parents(Profil profil) {
+            List<String> ids = new java.util.ArrayList<>(profil.experiences().stream().map(Fait::id).toList());
+            profil.formations().forEach(f -> ids.add(f.id()));
+            return ids;
+        }
+
+        private List<String> etiquettes() {
+            return competences == null ? List.of() : competences.stream().map(String::strip).filter(c -> !c.isEmpty()).toList();
+        }
+
+        private static String choisir(String donne, String actuel) {
+            return donne == null ? actuel : donne.strip();
         }
     }
 

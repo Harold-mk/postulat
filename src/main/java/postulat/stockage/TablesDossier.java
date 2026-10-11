@@ -163,9 +163,10 @@ final class TablesDossier {
             case Origine.Offre o -> "OFFRE";
             case Origine.Auteur au -> "AUTEUR";
         };
+        String verseeDans = a.origine() instanceof Origine.Auteur au ? au.verseeDans().orElse(null) : null;
         executer("INSERT INTO dossier_phrase (candidature_id, version, rang, document, section, contenu, role, pertinence, texte, "
-                + "origine) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                id, version, rang[0], document, section, contenu, role, pertinence, a.texte(), origine);
+                + "origine, versee_dans) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                id, version, rang[0], document, section, contenu, role, pertinence, a.texte(), origine, verseeDans);
         if (a.origine() instanceof Origine.Faits f) {
             for (int i = 0; i < f.ids().size(); i++) {
                 executer("INSERT INTO dossier_phrase_fait (candidature_id, version, rang, position, fait_id) VALUES (?, ?, ?, ?, ?)",
@@ -272,7 +273,7 @@ final class TablesDossier {
                     Origine origine = switch (r.getString("origine")) {
                         case "FAITS" -> new Origine.Faits(faits.getOrDefault(r.getInt("rang"), List.of()));
                         case "OFFRE" -> new Origine.Offre();
-                        case "AUTEUR" -> new Origine.Auteur();
+                        case "AUTEUR" -> new Origine.Auteur(Optional.ofNullable(r.getString("versee_dans")));
                         default -> throw new ErreurStockage("Origine inconnue dans la base : " + r.getString("origine") + ".");
                     };
                     int pertinence = r.getInt("pertinence");

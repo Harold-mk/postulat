@@ -1,6 +1,8 @@
 package postulat.production;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Provenance d'une assertion (glossaire § 4.1, § 4.3-e). Une assertion porte exactement une origine
@@ -35,6 +37,20 @@ public sealed interface Origine {
     /**
      * Écrite par l'auteur lui-même (CA-3.8). Traçable à lui, non au profil : la vérification ne la
      * rejette pas, et le modèle ne la réécrit jamais sans son accord (RG-27).
+     *
+     * @param verseeDans le fait du profil que l'auteur en a tiré (UC-04), s'il l'a fait. La phrase n'en
+     *     devient pas pour autant d'origine « faits » : ce fait n'existait pas quand elle a été écrite
+     *     (RG-23). Mais la régénération suivante ne la reporte plus : elle s'appuie sur le fait.
      */
-    record Auteur() implements Origine {}
+    record Auteur(Optional<String> verseeDans) implements Origine {
+
+        public Auteur {
+            Objects.requireNonNull(verseeDans);
+        }
+
+        /** Une phrase de l'auteur, pas encore versée au profil. */
+        public Auteur() {
+            this(Optional.empty());
+        }
+    }
 }

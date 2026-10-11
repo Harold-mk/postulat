@@ -35,6 +35,11 @@ public record DossierGenere(
         return new DossierGenere(corrige, genereLe, empreinteProfil, modele, Optional.of(le), true);
     }
 
+    /** Le même, où le dossier change sans que son texte change : une phrase marquée comme versée au profil. */
+    public DossierGenere avec(Dossier dossier) {
+        return new DossierGenere(dossier, genereLe, empreinteProfil, modele, corrigeLe, avisPerime);
+    }
+
     /** Le même, avec un nouvel avis du recruteur, qui juge la version actuelle. */
     public DossierGenere reevalue(Dossier reevalue) {
         return new DossierGenere(reevalue, genereLe, empreinteProfil, modele, corrigeLe, false);

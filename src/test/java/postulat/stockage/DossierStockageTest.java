@@ -56,7 +56,7 @@ class DossierStockageTest {
             "Candidature au poste « Stage data »", List.of(
                     new Lettre.Paragraphe(List.of(new Assertion("Globex compte 250 salariés.", new Origine.Offre()))),
                     new Lettre.Paragraphe(List.of(faits("J'ai conçu un tableau de bord.", "exp-acme-r1"),
-                            new Assertion("Je parle japonais.", new Origine.Auteur()))),
+                            new Assertion("Je parle japonais.", new Origine.Auteur(Optional.of("comp-japonais"))))),
                     new Lettre.Paragraphe(List.of(faits("Rencontrons-nous.", "exp-acme")))));
 
     static AvisRecruteur avis() {
