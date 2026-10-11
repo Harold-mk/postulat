@@ -67,7 +67,7 @@ class DossierStockageTest {
 
     static Dossier dossier(Optional<NoteAts> ats) {
         return new Dossier(CV, LETTRE, new Evaluation(ats, avis(), new ReglesGeneration(70, 30, 1, 200, 300)),
-                new Dossier.Rapport(2, List.of(RETIREE), List.of("Seuil non atteint", "CV : phrase introuvable"),
+                new Dossier.Rapport(2, List.of(new Dossier.Retiree(RETIREE, 0, 1)), List.of("Seuil non atteint", "CV : phrase introuvable"),
                         List.of("Ajoutez Kubernetes")));
     }
 
@@ -99,7 +99,7 @@ class DossierStockageTest {
 
     @Test
     void le_dossier_se_relit_a_l_identique() {
-        DossierGenere g = new DossierGenere(dossier(Optional.of(ATS)), GENERE, "ab12");
+        DossierGenere g = DossierGenere.nouveau(dossier(Optional.of(ATS)), GENERE, "ab12");
 
         base.enregistrerDossier(candidature.id(), g);
 
@@ -108,7 +108,7 @@ class DossierStockageTest {
 
     @Test
     void sans_note_ats_le_dossier_se_relit_aussi() {
-        DossierGenere g = new DossierGenere(dossier(Optional.empty()), GENERE, "ab12");
+        DossierGenere g = DossierGenere.nouveau(dossier(Optional.empty()), GENERE, "ab12");
 
         base.enregistrerDossier(candidature.id(), g);
 
@@ -117,15 +117,34 @@ class DossierStockageTest {
 
     @Test
     void une_generation_remplace_la_precedente_en_entier() {
-        base.enregistrerDossier(candidature.id(), new DossierGenere(dossier(Optional.of(ATS)), GENERE, "ab12"));
+        base.enregistrerDossier(candidature.id(), DossierGenere.nouveau(dossier(Optional.of(ATS)), GENERE, "ab12"));
         Dossier court = new Dossier(new Cv(CAMILLE, List.of()),
                 new Lettre(CAMILLE, "Globex", "Le 11 octobre 2026", "Candidature", List.of()),
                 new Evaluation(Optional.empty(), avis(), ReglesGeneration.PAR_DEFAUT),
                 new Dossier.Rapport(1, List.of(), List.of(), List.of()));
-        DossierGenere nouveau = new DossierGenere(court, GENERE.plusSeconds(3600), "cd34");
+        DossierGenere nouveau = DossierGenere.nouveau(court, GENERE.plusSeconds(3600), "cd34");
 
         base.enregistrerDossier(candidature.id(), nouveau);
 
         assertThat(base.dossier(candidature.id())).contains(nouveau);
+    }
+
+    @Test
+    void une_correction_se_relit_avec_sa_date_et_son_avis_perime_jusqu_au_suivant() {
+        Dossier d = dossier(Optional.of(ATS));
+        Instant corrige = GENERE.plusSeconds(60);
+        DossierGenere g = DossierGenere.nouveau(d, GENERE, "ab12").corrige(d.corriger(1, "Data analyst — Acme"), corrige);
+
+        base.enregistrerDossier(candidature.id(), g);
+
+        assertThat(base.dossier(candidature.id())).contains(g);
+        assertThat(g.avisPerime()).isTrue();
+        DossierGenere reevalue = g.reevalue(g.dossier());
+        base.enregistrerDossier(candidature.id(), reevalue);
+        assertThat(base.dossier(candidature.id())).hasValueSatisfying(x -> {
+            assertThat(x.avisPerime()).isFalse();
+            assertThat(x.corrigeLe()).contains(corrige);
+            assertThat(x.dossier().reintroduire(1).cv().sections().get(0).contenus().get(1)).isInstanceOf(Cv.Bloc.class);
+        });
     }
 }

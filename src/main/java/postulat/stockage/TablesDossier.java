@@ -69,11 +69,12 @@ final class TablesDossier {
         ReglesGeneration r = ev.regles();
         executer("INSERT INTO dossier (candidature_id, genere_le, empreinte_profil, passes, nom, titre, contact, lieu, "
                 + "destinataire, lieu_et_date, objet, paragraphes, note_ats, ats_lisible, seuil, poids_ats, revisions_max, "
-                + "mots_min, mots_max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                + "mots_min, mots_max, corrige_le, avis_perime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 id, g.genereLe().toString(), g.empreinteProfil(), d.rapport().passes(), e.nom(), e.titre(), e.contact(), e.lieu(),
                 l.destinataire(), l.lieuEtDate(), l.objet(), l.paragraphes().size(),
                 ev.ats().map(NoteAts::note).orElse(null), ev.ats().map(a -> a.lisible() ? 1 : 0).orElse(null),
-                r.seuil(), r.poidsAts(), r.revisionsMax(), r.motsMin(), r.motsMax());
+                r.seuil(), r.poidsAts(), r.revisionsMax(), r.motsMin(), r.motsMax(),
+                g.corrigeLe().map(Instant::toString).orElse(null), g.avisPerime() ? 1 : 0);
 
         int[] rang = {0};
         for (int s = 0; s < d.cv().sections().size(); s++) {
@@ -99,8 +100,8 @@ final class TablesDossier {
                 phrase(rang, LETTRE, p, 0, PHRASE, null, a);
             }
         }
-        for (Cv.Puce p : d.rapport().retirees()) {
-            phrase(rang, RETIREE, 0, 0, PUCE, p.rang(), p.assertion());
+        for (Dossier.Retiree x : d.rapport().retirees()) {
+            phrase(rang, RETIREE, x.section(), x.contenu(), PUCE, x.puce().rang(), x.puce().assertion());
         }
 
         if (ev.ats().isPresent()) {
@@ -184,11 +185,13 @@ final class TablesDossier {
                 int noteAts = r.getInt("note_ats");
                 Optional<NoteAts> ats = r.wasNull() ? Optional.empty() : Optional.of(ats(noteAts, r.getInt("ats_lisible") == 1));
                 AvisRecruteur avis = new AvisRecruteur(criteres(), remarques(FORCE), remarques(FAIBLESSE), remarques(CORRECTION));
-                List<Cv.Puce> retirees = lignes.stream().filter(l -> l.document().equals(RETIREE))
-                        .map(l -> new Cv.Puce(l.assertion(), l.pertinence())).toList();
+                List<Dossier.Retiree> retirees = lignes.stream().filter(l -> l.document().equals(RETIREE))
+                        .map(l -> new Dossier.Retiree(new Cv.Puce(l.assertion(), l.pertinence()), l.section(), l.contenu())).toList();
                 Dossier dossier = new Dossier(cv, lettre, new Evaluation(ats, avis, regles),
                         new Dossier.Rapport(r.getInt("passes"), retirees, remarques(AVERTISSEMENT), remarques(CORRECTION_ECARTEE)));
-                return Optional.of(new DossierGenere(dossier, Instant.parse(r.getString("genere_le")), r.getString("empreinte_profil")));
+                Optional<Instant> corrigeLe = Optional.ofNullable(r.getString("corrige_le")).map(Instant::parse);
+                return Optional.of(new DossierGenere(dossier, Instant.parse(r.getString("genere_le")), r.getString("empreinte_profil"),
+                        corrigeLe, r.getInt("avis_perime") == 1));
             }
         }
     }

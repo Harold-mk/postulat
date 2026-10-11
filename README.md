@@ -19,7 +19,7 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 6 | Analyse d'offre, rapprochement avec le profil, note d'adéquation, arbitrage (UC-05, UC-06) | ✅ |
 | 7 | Rendu PDF sur une page, compaction puis retrait des phrases les moins pertinentes, relecture du texte (RG-05, RG-26) | ✅ |
 | 8a | CV ciblé, lettre, évaluation par filtre ATS et recruteur simulé, révision bornée (UC-07) | ✅ |
-| 8b | Correction manuelle du dossier, régénération qui garde les phrases de l'auteur (UC-08) | à venir |
+| 8b | Correction manuelle du dossier, régénération qui garde les phrases de l'auteur (UC-08) | ✅ |
 | 8c | Validation : dossier figé, PDF et DOCX dans le répertoire de la candidature (UC-09) | à venir |
 | 8d | Phrases versées au profil (UC-04), import d'un CV (UC-02) | à venir |
 | 9 | Interface de bureau | à venir |
@@ -99,6 +99,15 @@ La production de documents :
   dossier est enregistré phrase par phrase, chacune avec son origine, et avec l'empreinte du profil
   qui l'a produit : `dossier voir N` le relit et signale un profil modifié depuis. Ses PDF sont des
   aperçus, rangés dans `apercus/` ; la validation, qui les figera, est l'étape suivante.
+- **La correction à la main**, sans aucun appel au modèle. Chaque phrase du dossier porte un numéro :
+  `dossier modifier` la réécrit, et elle devient de votre main — la vérification ne la rejette pas,
+  et aucune génération ne la réécrira ; `dossier supprimer` la retire, et retirer l'intitulé d'une
+  expérience la retire en entier ; `dossier reintroduire` remet à sa place une puce que le manque de
+  place avait fait retirer. Chaque correction est re-rendue avant d'être acceptée : ce qui ferait
+  déborder la page est refusé, sans rien changer. La note ATS est recalculée ; l'avis du recruteur,
+  qui jugeait la version précédente, est signalé comme périmé, et `dossier evaluer` en demande un
+  nouveau. Une régénération reporte vos phrases au mot près : le modèle n'en choisit que la place, et
+  c'est le programme qui en écrit le texte.
 - **Le modèle de langage est branché** derrière une seule interface,
   `Modele`, et son adaptateur vers l'API Anthropic. Le modèle répond dans une forme imposée (sorties
   structurées), la partie stable des demandes — consignes et profil — est mise en cache, et un refus des classifieurs de
@@ -136,6 +145,8 @@ java -jar target/postulat.jar actions
 | `profil initialiser` · `profil verifier` | écrire le gabarit commenté du profil ; dire ce qui y manque, à la ligne près |
 | `cv apercu [--offre N] [--sortie FICHIER]` | rendre sur une page le CV tiré du profil, le relire, et le noter face à une offre |
 | `dossier generer N` · `dossier voir N [--apercus]` | rédiger, vérifier, évaluer et réviser le CV ciblé et la lettre ; les relire, phrase par phrase et origine comprise |
+| `dossier modifier N PHRASE TEXTE` · `dossier supprimer N PHRASE` · `dossier reintroduire N R1` | corriger à la main, sans modèle : réécrire une phrase, la retirer, remettre une puce retirée faute de place |
+| `dossier evaluer N` | un nouvel avis du recruteur sur le dossier corrigé, en un appel |
 | `modele essai [--gamme capable]` · `modele couts` | vérifier la clé d'API par un appel minuscule ; le cumul des coûts, mois par mois |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est

@@ -63,6 +63,22 @@ public final class Rendu {
         }
     }
 
+    /**
+     * Rend le CV tel quel, sans rien en retirer : après une correction à la main, c'est au candidat de
+     * choisir ce qui part. S'il ne tient pas sur une page, même au plus serré, c'est un refus (UC-08 E1).
+     */
+    public static Resultat cvTelQuel(Cv cv) {
+        Composition plusSerree = null;
+        for (Gabarit g : Gabarit.DU_PLUS_AERE_AU_PLUS_SERRE) {
+            Composition c = composer(cv, g);
+            if (c.tient()) {
+                return terminer(c, titre("CV", cv.entete()), cv.entete().nom(), List.of(), cv.assertions());
+            }
+            plusSerree = c;
+        }
+        throw new ErreurRendu("Le CV dépasserait une page de " + debord(plusSerree) + ", même au plus serré.");
+    }
+
     /** Une lettre ne se coupe pas phrase à phrase : si elle déborde au plus serré, elle est à raccourcir. */
     public static Resultat lettre(Lettre lettre) {
         Composition plusSerree = null;
@@ -101,6 +117,9 @@ public final class Rendu {
         Composition c = new Composition(g);
         entete(c, cv.entete(), g);
         for (Cv.Section s : cv.sections()) {
+            if (s.contenus().isEmpty()) {
+                continue; // vidée par une correction : un titre seul ne dit rien
+            }
             c.espace(g.espace());
             c.paragraphe(s.titre().toUpperCase(Locale.FRENCH), c.grasse, g.corps() + 1, 0, null);
             c.filet();

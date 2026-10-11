@@ -84,38 +84,63 @@ final class Affichage {
     }
 
     /**
-     * Le dossier tel qu'on le relit avant de l'envoyer : chaque phrase suivie de son origine (CA-3.7), puis
-     * l'évaluation et le rapport (CA-5.5). Ce qui a été retiré ou écarté est dit, pas tu.
+     * Le dossier tel qu'on le relit avant de l'envoyer : chaque phrase numérotée — c'est par ce numéro qu'on
+     * la corrige — et suivie de son origine (CA-3.7), puis l'évaluation et le rapport (CA-5.5). Ce qui a
+     * été retiré ou écarté est dit, pas tu.
+     *
+     * @param avisPerime vrai si le dossier a été corrigé depuis l'avis du recruteur
      */
-    static void dossier(PrintWriter out, Dossier d) {
+    static void dossier(PrintWriter out, Dossier d, boolean avisPerime) {
         Evaluation e = d.evaluation();
         out.println("Note globale : " + e.noteGlobale() + "/100, seuil " + e.regles().seuil() + (e.seuilAtteint() ? " atteint" : " non atteint")
-                + " — ATS " + e.ats().map(a -> a.note() + "/100").orElse("sans objet") + " · recruteur " + e.avis().note() + "/100");
+                + " — ATS " + e.ats().map(a -> a.note() + "/100").orElse("sans objet") + " · recruteur " + e.avis().note() + "/100"
+                + (avisPerime ? ", avis antérieur à vos corrections" : ""));
         out.println();
+        int[] numero = {1};
         out.println("CV");
         for (Cv.Section s : d.cv().sections()) {
-            out.println("  " + s.titre().toUpperCase(Locale.FRENCH));
+            if (s.contenus().isEmpty()) {
+                continue;
+            }
+            out.println("        " + s.titre().toUpperCase(Locale.FRENCH));
             for (Cv.Contenu c : s.contenus()) {
                 switch (c) {
                     case Cv.Bloc b -> {
-                        out.println("    " + phrase(b.intitule()));
-                        b.precision().ifPresent(p -> out.println("    " + phrase(p)));
-                        b.puces().forEach(p -> out.println("      • " + phrase(p.assertion()) + " (pertinence " + p.rang() + ")"));
+                        out.println(numerotee(numero, "", b.intitule()));
+                        b.precision().ifPresent(p -> out.println(numerotee(numero, "", p)));
+                        b.puces().forEach(p -> out.println(numerotee(numero, "• ", p.assertion()) + " (pertinence " + p.rang() + ")"));
                     }
-                    case Cv.Ligne l -> out.println("    " + phrase(l.assertion()));
+                    case Cv.Ligne l -> out.println(numerotee(numero, "", l.assertion()));
                 }
             }
         }
         out.println();
         Lettre l = d.lettre();
         out.println("Lettre — " + l.destinataire() + " · " + l.lieuEtDate() + " · " + l.mots() + " mots");
-        out.println("  Objet : " + l.objet());
+        out.println("        Objet : " + l.objet());
         String[] parties = {"Vous", "Moi", "Nous"};
         for (int i = 0; i < l.paragraphes().size(); i++) {
-            out.println("  " + (i < parties.length ? parties[i] : "Paragraphe " + (i + 1)));
-            l.paragraphes().get(i).phrases().forEach(p -> out.println("    " + phrase(p)));
+            out.println("        " + (i < parties.length ? parties[i] : "Paragraphe " + (i + 1)));
+            l.paragraphes().get(i).phrases().forEach(p -> out.println(numerotee(numero, "", p)));
         }
         out.println();
+        evaluation(out, d, avisPerime);
+        out.println();
+        Dossier.Rapport r = d.rapport();
+        out.println("Rapport : " + (r.passes() == 1 ? "une passe" : r.passes() + " passes") + ", " + d.assertions().size()
+                + " phrases dont " + d.assertionsDeLAuteur() + " de votre main");
+        if (!r.retirees().isEmpty()) {
+            out.println("  Retirées pour tenir sur une page, les moins pertinentes d'abord (RG-26)");
+            for (int i = 0; i < r.retirees().size(); i++) {
+                out.println(String.format("  R%-3d  ", i + 1) + phrase(r.retirees().get(i).puce().assertion()));
+            }
+        }
+        r.avertissements().forEach(a -> out.println("  Attention : " + a));
+    }
+
+    /** L'évaluation seule : le filtre ATS, puis le recruteur, critère par critère. */
+    static void evaluation(PrintWriter out, Dossier d, boolean avisPerime) {
+        Evaluation e = d.evaluation();
         e.ats().ifPresent(a -> {
             out.println("Filtre ATS : " + a.note() + "/100" + (a.lisible() ? "" : ", texte illisible"));
             if (!a.presentes().isEmpty()) {
@@ -126,19 +151,17 @@ final class Affichage {
             }
         });
         AvisRecruteur avis = e.avis();
-        out.println("Recruteur : " + avis.note() + "/100");
+        out.println("Recruteur : " + avis.note() + "/100" + (avisPerime ? " — avis antérieur à vos corrections" : ""));
         avis.criteres().forEach(n -> out.println("  " + n.critere().libelle() + " " + n.note() + "/5 — " + n.justification()));
         liste(out, "Forces", avis.forces());
         liste(out, "Faiblesses", avis.faiblesses());
         liste(out, "Corrections proposées", avis.corrections());
         liste(out, "Corrections écartées : elles demandaient un fait absent du profil (RG-07)", d.rapport().correctionsEcartees());
-        out.println();
-        Dossier.Rapport r = d.rapport();
-        out.println("Rapport : " + (r.passes() == 1 ? "une passe" : r.passes() + " passes") + ", " + d.assertions().size()
-                + " phrases dont " + d.assertionsDeLAuteur() + " de votre main");
-        liste(out, "Retirées pour tenir sur une page, les moins pertinentes d'abord (RG-26)",
-                r.retirees().stream().map(p -> p.assertion().texte()).toList());
-        r.avertissements().forEach(a -> out.println("  Attention : " + a));
+    }
+
+    /** «   12  • Conçu un tableau de bord [exp-acme-r1] » : le numéro, puis la phrase, et le compteur avance. */
+    private static String numerotee(int[] numero, String marque, Assertion a) {
+        return String.format("%4d    ", numero[0]++) + marque + phrase(a);
     }
 
     /** « Automatisé le reporting [r-acme-1] », « Votre équipe… [offre] » */

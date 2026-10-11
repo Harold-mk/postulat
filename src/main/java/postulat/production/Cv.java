@@ -116,6 +116,133 @@ public record Cv(Identite entete, List<Section> sections) {
         return new Cv(entete, restantes);
     }
 
+    // --- corrections à la main (UC-08) ---
+
+    /** Ce qu'une assertion est dans le CV. */
+    public enum Role { INTITULE, PRECISION, PUCE, LIGNE }
+
+    /**
+     * Où se trouve une assertion : sa section, son contenu dans la section — bloc ou ligne —, et son rôle.
+     * Les indices partent de 0.
+     */
+    public record Place(int section, int contenu, Role role) {}
+
+    /** La place de l'assertion de rang {@code index} dans l'ordre de lecture, à partir de 0. */
+    public Place place(int index) {
+        return trouver(index).place();
+    }
+
+    /** Une place, et le rang de lecture de la première assertion de son contenu. */
+    private record Trouvee(Place place, int debut) {}
+
+    private Trouvee trouver(int index) {
+        if (index < 0) {
+            throw new IllegalArgumentException("Le CV n'a pas d'assertion n° " + (index + 1) + ".");
+        }
+        int i = 0;
+        for (int s = 0; s < sections.size(); s++) {
+            List<Contenu> contenus = sections.get(s).contenus();
+            for (int c = 0; c < contenus.size(); c++) {
+                switch (contenus.get(c)) {
+                    case Bloc b -> {
+                        int taille = 1 + (b.precision().isPresent() ? 1 : 0) + b.puces().size();
+                        if (index < i + taille) {
+                            Role role = index == i ? Role.INTITULE
+                                    : b.precision().isPresent() && index == i + 1 ? Role.PRECISION : Role.PUCE;
+                            return new Trouvee(new Place(s, c, role), i);
+                        }
+                        i += taille;
+                    }
+                    case Ligne l -> {
+                        if (index == i) {
+                            return new Trouvee(new Place(s, c, Role.LIGNE), i);
+                        }
+                        i++;
+                    }
+                }
+            }
+        }
+        throw new IllegalArgumentException("Le CV n'a pas d'assertion n° " + (index + 1) + ".");
+    }
+
+    /** La place de cette puce : celle d'une puce retirée, pour qu'elle puisse y revenir. */
+    public Optional<Place> place(Puce puce) {
+        for (int s = 0; s < sections.size(); s++) {
+            List<Contenu> contenus = sections.get(s).contenus();
+            for (int c = 0; c < contenus.size(); c++) {
+                if (contenus.get(c) instanceof Bloc b && b.puces().contains(puce)) {
+                    return Optional.of(new Place(s, c, Role.PUCE));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Le même CV, l'assertion de rang {@code index} remplacée ; une puce garde son rang de pertinence. */
+    public Cv remplacer(int index, Assertion nouvelle) {
+        return modifier(index, Optional.of(nouvelle));
+    }
+
+    /**
+     * Le même CV sans l'assertion de rang {@code index}. Sans son intitulé, un bloc n'a plus de sens : il
+     * part en entier, précision et puces comprises.
+     */
+    public Cv supprimer(int index) {
+        return modifier(index, Optional.empty());
+    }
+
+    /** Le même CV, la puce remise dans le bloc désigné, à sa place dans l'ordre de pertinence. */
+    public Cv avec(Puce puce, int section, int contenu) {
+        if (section >= sections.size() || contenu >= sections.get(section).contenus().size()
+                || !(sections.get(section).contenus().get(contenu) instanceof Bloc b)) {
+            throw new IllegalArgumentException("Le bloc où revenait cette puce n'existe plus.");
+        }
+        List<Puce> puces = new ArrayList<>(b.puces());
+        int position = 0;
+        while (position < puces.size() && puces.get(position).rang() < puce.rang()) {
+            position++;
+        }
+        puces.add(position, puce);
+        return avecContenu(section, contenu, Optional.of(new Bloc(b.intitule(), b.precision(), puces)));
+    }
+
+    private Cv modifier(int index, Optional<Assertion> nouvelle) {
+        Trouvee t = trouver(index);
+        Place p = t.place();
+        Contenu c = sections.get(p.section()).contenus().get(p.contenu());
+        Optional<Contenu> remplacant = switch (c) {
+            case Ligne l -> nouvelle.map(Ligne::new);
+            case Bloc b -> switch (p.role()) {
+                case INTITULE -> nouvelle.map(a -> new Bloc(a, b.precision(), b.puces()));
+                case PRECISION -> Optional.of(new Bloc(b.intitule(), nouvelle, b.puces()));
+                default -> {
+                    int k = index - t.debut() - 1 - (b.precision().isPresent() ? 1 : 0);
+                    List<Puce> puces = new ArrayList<>(b.puces());
+                    if (nouvelle.isPresent()) {
+                        puces.set(k, new Puce(nouvelle.get(), puces.get(k).rang()));
+                    } else {
+                        puces.remove(k);
+                    }
+                    yield Optional.of(new Bloc(b.intitule(), b.precision(), puces));
+                }
+            };
+        };
+        return avecContenu(p.section(), p.contenu(), remplacant);
+    }
+
+    /** Le même CV où un contenu est remplacé, ou retiré s'il n'y a pas de remplaçant. */
+    private Cv avecContenu(int section, int contenu, Optional<Contenu> remplacant) {
+        List<Section> nouvelles = new ArrayList<>(sections);
+        List<Contenu> contenus = new ArrayList<>(sections.get(section).contenus());
+        if (remplacant.isPresent()) {
+            contenus.set(contenu, remplacant.get());
+        } else {
+            contenus.remove(contenu);
+        }
+        nouvelles.set(section, new Section(sections.get(section).titre(), contenus));
+        return new Cv(entete, nouvelles);
+    }
+
     private static List<Puce> puces(List<Section> sections) {
         return sections.stream()
                 .flatMap(s -> s.contenus().stream())

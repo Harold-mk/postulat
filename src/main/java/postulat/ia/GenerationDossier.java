@@ -7,7 +7,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -80,11 +82,15 @@ public final class GenerationDossier {
     public record PuceGeneree(
             @JsonPropertyDescription("La phrase de la puce") String texte,
             @JsonPropertyDescription("Identifiants des faits dont elle dérive") List<String> faits,
-            @JsonPropertyDescription("Rang de pertinence pour l'offre, unique dans le CV : 1 pour la plus pertinente") int rang) {}
+            @JsonPropertyDescription("Rang de pertinence pour l'offre, unique dans le CV : 1 pour la plus pertinente") int rang,
+            @JsonPropertyDescription("Référence d'une phrase de l'auteur à placer ici telle quelle, A1, A2… ; vide sinon")
+                    String reprise) {}
 
     public record PhraseGeneree(
             @JsonPropertyDescription("Le texte") String texte,
-            @JsonPropertyDescription("Identifiants des faits dont il dérive") List<String> faits) {}
+            @JsonPropertyDescription("Identifiants des faits dont il dérive") List<String> faits,
+            @JsonPropertyDescription("Référence d'une phrase de l'auteur à placer ici telle quelle, A1, A2… ; vide sinon")
+                    String reprise) {}
 
     /** P6. */
     public record LettreGeneree(
@@ -96,7 +102,9 @@ public final class GenerationDossier {
             @JsonPropertyDescription("Une phrase") String texte,
             @JsonPropertyDescription("« faits » si elle s'appuie sur le profil, « offre » si elle ne dit que ce que l'offre dit")
                     String origine,
-            @JsonPropertyDescription("Identifiants des faits dont elle dérive ; vide pour l'origine « offre »") List<String> faits) {}
+            @JsonPropertyDescription("Identifiants des faits dont elle dérive ; vide pour l'origine « offre »") List<String> faits,
+            @JsonPropertyDescription("Référence d'une phrase de l'auteur à placer ici telle quelle, A1, A2… ; vide sinon")
+                    String reprise) {}
 
     /** P7. */
     public record AvisLu(
@@ -140,6 +148,106 @@ public final class GenerationDossier {
         }
     }
 
+    // --- les phrases de l'auteur ---
+
+    /**
+     * Une phrase de l'auteur à reporter telle quelle dans une régénération (UC-08 A1, RG-27). Le modèle
+     * n'en choisit que la place, par sa référence ; le texte, c'est le programme qui l'écrit : il ne peut
+     * donc pas être réécrit.
+     *
+     * @param reference A1, A2… dans l'ordre de lecture du dossier
+     * @param dansLeCv faux pour une phrase de la lettre : chacune revient dans son document
+     * @param contexte où elle était, pour que le modèle la replace à propos
+     */
+    public record Reprise(String reference, boolean dansLeCv, String contexte, String texte) {}
+
+    /** Les phrases de l'auteur d'un dossier, à reporter dans le suivant. */
+    public static List<Reprise> reprises(Dossier precedent) {
+        List<Reprise> reprises = new ArrayList<>();
+        List<Assertion> phrases = precedent.assertions();
+        int nCv = precedent.cv().assertions().size();
+        for (int i = 0; i < phrases.size(); i++) {
+            if (phrases.get(i).origine() instanceof Origine.Auteur) {
+                reprises.add(new Reprise("A" + (reprises.size() + 1), i < nCv,
+                        i < nCv ? contexte(precedent.cv(), i) : contexte(precedent.lettre(), i - nCv), phrases.get(i).texte()));
+            }
+        }
+        return reprises;
+    }
+
+    private static String contexte(Cv cv, int index) {
+        Cv.Place p = cv.place(index);
+        Cv.Section section = cv.sections().get(p.section());
+        String ou = "section « " + section.titre() + " »";
+        if (section.contenus().get(p.contenu()) instanceof Cv.Bloc b && p.role() != Cv.Role.INTITULE) {
+            ou += ", bloc « " + b.intitule().texte() + " »";
+        }
+        return ou + (p.role() == Cv.Role.INTITULE ? ", intitulé de bloc" : p.role() == Cv.Role.PRECISION ? ", précision" : "");
+    }
+
+    private static String contexte(Lettre lettre, int index) {
+        String[] parties = {"Vous", "Moi", "Nous"};
+        int debut = 0;
+        for (int p = 0; p < lettre.paragraphes().size(); p++) {
+            debut += lettre.paragraphes().get(p).phrases().size();
+            if (index < debut) {
+                return "partie « " + (p < parties.length ? parties[p] : String.valueOf(p + 1)) + " »";
+            }
+        }
+        return "lettre";
+    }
+
+    /** Ce que la demande dit des phrases de l'auteur d'un document : rien s'il n'y en a pas. */
+    private static String reprisesDemandees(List<Reprise> reprises) {
+        return reprises.isEmpty() ? "" : "\n\nPhrases de l'auteur, à reprendre telles quelles :\n" + reprises.stream()
+                .map(x -> "- " + x.reference() + " (" + x.contexte() + ") : « " + x.texte() + " »")
+                .collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * Les phrases de l'auteur qu'un document doit reprendre, et l'usage que la réponse en fait : chacune
+     * une fois, aucune autre (RG-27).
+     */
+    private static final class Placement {
+
+        private final Map<String, Reprise> attendues = new LinkedHashMap<>();
+        private final Map<String, Integer> placees = new LinkedHashMap<>();
+
+        Placement(List<Reprise> reprises) {
+            reprises.forEach(x -> attendues.put(x.reference(), x));
+        }
+
+        boolean demande(String reference) {
+            return !net(reference).isEmpty();
+        }
+
+        /** La phrase de l'auteur désignée, au mot près ; une référence inconnue est notée, et refusée plus tard. */
+        Assertion phrase(String reference) {
+            String ref = net(reference).toUpperCase(Locale.ROOT);
+            placees.merge(ref, 1, Integer::sum);
+            Reprise x = attendues.get(ref);
+            return new Assertion(x == null ? ref : x.texte(), new Origine.Auteur());
+        }
+
+        Assertion ou(String reference, java.util.function.Supplier<Assertion> sinon) {
+            return demande(reference) ? phrase(reference) : sinon.get();
+        }
+
+        List<String> problemes() {
+            List<String> problemes = new ArrayList<>();
+            placees.forEach((ref, fois) -> {
+                if (!attendues.containsKey(ref)) {
+                    problemes.add("La référence « " + ref + " » ne désigne aucune phrase de l'auteur de ce document.");
+                } else if (fois > 1) {
+                    problemes.add("La phrase de l'auteur " + ref + " est placée " + fois + " fois ; une seule suffit.");
+                }
+            });
+            attendues.keySet().stream().filter(ref -> !placees.containsKey(ref)).forEach(ref -> problemes.add(
+                    "La phrase de l'auteur " + ref + " manque : elle se reporte telle quelle (RG-27)."));
+            return problemes;
+        }
+    }
+
     // --- consignes : la partie stable des demandes ---
 
     static final String CONSIGNES_CV = """
@@ -168,6 +276,10 @@ public final class GenerationDossier {
               recrutement les cherchera tels quels ;
             - mets en avant ce qui sert l'offre ; une réalisation sans rapport peut être omise ;
             - respecte la consigne de présentation d'un fait quand il en a une.
+
+            Phrases de l'auteur : quand le contenu en donne, chacune se place une fois, dans ce document, en
+            écrivant sa référence dans « reprise » ; le programme y met le texte exact. Tu ne les réécris jamais.
+            Hors de ce cas, « reprise » reste vide.
             """;
 
     static final String CONSIGNES_LETTRE = """
@@ -190,6 +302,10 @@ public final class GenerationDossier {
             Toutes les phrases de « moi » sont d'origine « faits ».
             Une exigence marquée LACUNE n'apparaît nulle part, sous aucune forme, pas même pour dire qu'elle manque.
             Respecte la consigne de présentation d'un fait quand il en a une.
+
+            Phrases de l'auteur : quand le contenu en donne, chacune se place une fois, dans ce document, en
+            écrivant sa référence dans « reprise » ; le programme y met le texte exact. Tu ne les réécris jamais.
+            Hors de ce cas, « reprise » reste vide.
             """;
 
     static final String CONSIGNES_AVIS = """
@@ -213,18 +329,21 @@ public final class GenerationDossier {
     /**
      * Génère, évalue et révise le dossier.
      *
+     * @param reprises les phrases de l'auteur du dossier précédent, reportées telles quelles (RG-27)
      * @param aujourdhui la date de la lettre : le domaine ne lit pas l'horloge
      * @param progression reçoit une ligne à chaque étape : la génération prend du temps
      * @throws ErreurModele si le modèle est indisponible, ou si un document reste refusé après une reprise
      * @throws IllegalArgumentException si le profil est incomplet : refusé avant tout appel (UC-07 E1)
      */
-    public static Dossier generer(Modele modele, Profil profil, Cible cible, ReglesGeneration regles, LocalDate aujourdhui,
-            Consumer<String> progression) {
+    public static Dossier generer(Modele modele, Profil profil, Cible cible, List<Reprise> reprises, ReglesGeneration regles,
+            LocalDate aujourdhui, Consumer<String> progression) {
         if (!profil.estComplet()) {
             throw new IllegalArgumentException("Le profil est incomplet : la génération est refusée avant tout appel au "
                     + "modèle (UC-07 E1).");
         }
-        String profilLu = "\n\nProfil du candidat :\n" + TexteProfil.de(profil, true);
+        String profilLu = profilLu(profil);
+        List<Reprise> duCv = reprises.stream().filter(Reprise::dansLeCv).toList();
+        List<Reprise> deLaLettre = reprises.stream().filter(x -> !x.dansLeCv()).toList();
         Version meilleure = null;
         String retour = "";
         int passes = 0;
@@ -234,36 +353,37 @@ public final class GenerationDossier {
 
             progression.accept(passe + " : CV ciblé…");
             Demande demandeCv = new Demande("cv-cible", Gamme.CAPABLE, CONSIGNES_CV + profilLu,
-                    offre(cible) + "\n\n" + exigences(cible) + retour, Optional.of(cible.candidature()));
-            Cv cv = produire(modele, demandeCv, CvGenere.class, g -> cv(g, profil, cible), "le CV");
-            Rendu.Resultat cvRendu = Rendu.cv(cv);
-            for (Cv.Puce retiree : cvRendu.retirees()) {
-                cv = cv.sans(retiree);
+                    offre(cible) + "\n\n" + exigences(cible) + reprisesDemandees(duCv) + retour, Optional.of(cible.candidature()));
+            Cv complet = produire(modele, demandeCv, CvGenere.class, g -> cv(g, profil, cible, duCv), "le CV");
+            Rendu.Resultat cvRendu = Rendu.cv(complet);
+            Cv cv = complet;
+            List<Dossier.Retiree> retirees = new ArrayList<>();
+            for (Cv.Puce p : cvRendu.retirees()) {
+                Cv.Place place = complet.place(p).orElseThrow();
+                retirees.add(new Dossier.Retiree(p, place.section(), place.contenu()));
+                cv = cv.sans(p);
             }
 
             progression.accept(passe + " : lettre…");
             Demande demandeLettre = new Demande("lettre", Gamme.CAPABLE,
                     CONSIGNES_LETTRE + "\nLongueur : entre " + regles.motsMin() + " et " + regles.motsMax()
                             + " mots pour les trois paragraphes ensemble." + profilLu,
-                    offre(cible) + "\n\nTexte de l'offre :\n<<<\n" + cible.texteBrut().strip() + "\n>>>\n\n" + exigences(cible) + retour,
+                    offre(cible) + "\n\nTexte de l'offre :\n<<<\n" + cible.texteBrut().strip() + "\n>>>\n\n" + exigences(cible)
+                            + reprisesDemandees(deLaLettre) + retour,
                     Optional.of(cible.candidature()));
             Lettre lettre = produire(modele, demandeLettre, LettreGeneree.class,
-                    g -> lettre(g, profil, cible, regles, aujourdhui), "la lettre");
+                    g -> lettre(g, profil, cible, deLaLettre, regles, aujourdhui), "la lettre");
             Rendu.Resultat lettreRendue = Rendu.lettre(lettre);
 
             Optional<NoteAts> ats = Ats.noter(cvRendu.texte(), cible.analyse().exigences());
             progression.accept(passe + " : avis du recruteur…");
-            Demande demandeAvis = new Demande("avis-recruteur", Gamme.CAPABLE, CONSIGNES_AVIS + profilLu,
-                    offre(cible) + "\n\n" + exigences(cible) + "\n\nCV :\n<<<\n" + cvRendu.texte().strip() + "\n>>>\n\nLettre :\n<<<\n"
-                            + lettreRendue.texte().strip() + "\n>>>",
-                    Optional.of(cible.candidature()));
-            AvisRecruteur avisComplet = produire(modele, demandeAvis, AvisLu.class, GenerationDossier::avis, "l'avis du recruteur");
+            AvisRecruteur avisComplet = juger(modele, profilLu, cible, cvRendu.texte(), lettreRendue.texte());
             AvisRecruteur avis = avisComplet.sansCorrectionsSur(cible.lacunes());
             Evaluation evaluation = new Evaluation(ats, avis, regles);
 
             List<String> avertissements = new ArrayList<>(cvRendu.avertissements().stream().map(a -> "CV : " + a).toList());
             lettreRendue.avertissements().forEach(a -> avertissements.add("Lettre : " + a));
-            Version v = new Version(cv, lettre, evaluation, cvRendu.retirees(), avertissements,
+            Version v = new Version(cv, lettre, evaluation, retirees, avertissements,
                     avisComplet.correctionsSur(cible.lacunes()), cvRendu.texte(), lettreRendue.texte());
             progression.accept(passe + " : note globale " + evaluation.noteGlobale() + "/100, seuil " + regles.seuil() + ".");
             if (meilleure == null || evaluation.noteGlobale() > meilleure.evaluation().noteGlobale()) {
@@ -275,6 +395,37 @@ public final class GenerationDossier {
             retour = retour(v, cible);
         }
         return dossier(meilleure, passes);
+    }
+
+    /**
+     * P7 seul, sur le dossier tel qu'il est : après des corrections à la main, un nouvel avis du recruteur
+     * (UC-08, étape 7). La note ATS est recalculée sur le texte relu ; le CV et la lettre ne changent pas.
+     */
+    public static Dossier reevaluer(Modele modele, Profil profil, Cible cible, Dossier dossier) {
+        if (!profil.estComplet()) {
+            throw new IllegalArgumentException("Le profil est incomplet : l'avis est refusé avant tout appel au modèle.");
+        }
+        Rendu.Resultat cv = Rendu.cvTelQuel(dossier.cv());
+        Rendu.Resultat lettre = Rendu.lettre(dossier.lettre());
+        AvisRecruteur complet = juger(modele, profilLu(profil), cible, cv.texte(), lettre.texte());
+        Evaluation evaluation = new Evaluation(Ats.noter(cv.texte(), cible.analyse().exigences()),
+                complet.sansCorrectionsSur(cible.lacunes()), dossier.evaluation().regles());
+        Dossier.Rapport r = dossier.rapport();
+        return new Dossier(dossier.cv(), dossier.lettre(), evaluation,
+                new Dossier.Rapport(r.passes(), r.retirees(), r.avertissements(), complet.correctionsSur(cible.lacunes())));
+    }
+
+    private static String profilLu(Profil profil) {
+        return "\n\nProfil du candidat :\n" + TexteProfil.de(profil, true);
+    }
+
+    /** P7 : l'avis complet, corrections écartables comprises ; à l'appelant de les écarter (RG-07). */
+    private static AvisRecruteur juger(Modele modele, String profilLu, Cible cible, String texteCv, String texteLettre) {
+        Demande demande = new Demande("avis-recruteur", Gamme.CAPABLE, CONSIGNES_AVIS + profilLu,
+                offre(cible) + "\n\n" + exigences(cible) + "\n\nCV :\n<<<\n" + texteCv.strip() + "\n>>>\n\nLettre :\n<<<\n"
+                        + texteLettre.strip() + "\n>>>",
+                Optional.of(cible.candidature()));
+        return produire(modele, demande, AvisLu.class, GenerationDossier::avis, "l'avis du recruteur");
     }
 
     // --- une demande, une reprise ---
@@ -311,7 +462,8 @@ public final class GenerationDossier {
 
     // --- P5 : le CV ---
 
-    private static Tentative<Cv> cv(CvGenere g, Profil profil, Cible cible) {
+    private static Tentative<Cv> cv(CvGenere g, Profil profil, Cible cible, List<Reprise> reprises) {
+        Placement placement = new Placement(reprises);
         Cv cv;
         try {
             List<Cv.Section> sections = new ArrayList<>();
@@ -319,14 +471,16 @@ public final class GenerationDossier {
                 List<Cv.Contenu> contenus = new ArrayList<>();
                 for (BlocGenere b : liste(s.blocs())) {
                     List<Cv.Puce> puces = liste(b.puces()).stream()
-                            .map(p -> new Cv.Puce(new Assertion(net(p.texte()), new Origine.Faits(ids(p.faits()))), p.rang()))
+                            .map(p -> new Cv.Puce(placement.ou(p.reprise(),
+                                    () -> new Assertion(net(p.texte()), new Origine.Faits(ids(p.faits())))), p.rang()))
                             .toList();
-                    Optional<Assertion> precision = b.precision() == null || net(b.precision().texte()).isEmpty()
+                    Optional<Assertion> precision = b.precision() == null
+                            || net(b.precision().texte()).isEmpty() && !placement.demande(b.precision().reprise())
                             ? Optional.empty()
-                            : Optional.of(assertion(b.precision()));
-                    contenus.add(new Cv.Bloc(assertion(b.intitule()), precision, puces));
+                            : Optional.of(assertion(b.precision(), placement));
+                    contenus.add(new Cv.Bloc(assertion(b.intitule(), placement), precision, puces));
                 }
-                liste(s.lignes()).forEach(l -> contenus.add(new Cv.Ligne(assertion(l))));
+                liste(s.lignes()).forEach(l -> contenus.add(new Cv.Ligne(assertion(l, placement))));
                 if (net(s.titre()).isEmpty()) {
                     return Tentative.refusee("Une section n'a pas de titre.");
                 }
@@ -341,19 +495,23 @@ public final class GenerationDossier {
         if (cv.assertions().isEmpty()) {
             return Tentative.refusee("Le CV est vide.");
         }
-        return new Tentative<>(cv, violations(cv.assertions(), Tracabilite.verifier(cv.assertions(), profil, cible.lacunes())));
+        List<String> problemes = new ArrayList<>(placement.problemes());
+        problemes.addAll(violations(cv.assertions(), Tracabilite.verifier(cv.assertions(), profil, cible.lacunes())));
+        return new Tentative<>(cv, problemes);
     }
 
-    private static Assertion assertion(PhraseGeneree p) {
+    private static Assertion assertion(PhraseGeneree p, Placement placement) {
         if (p == null) {
             throw new IllegalArgumentException("un intitulé manque.");
         }
-        return new Assertion(net(p.texte()), new Origine.Faits(ids(p.faits())));
+        return placement.ou(p.reprise(), () -> new Assertion(net(p.texte()), new Origine.Faits(ids(p.faits()))));
     }
 
     // --- P6 : la lettre ---
 
-    private static Tentative<Lettre> lettre(LettreGeneree g, Profil profil, Cible cible, ReglesGeneration regles, LocalDate aujourdhui) {
+    private static Tentative<Lettre> lettre(LettreGeneree g, Profil profil, Cible cible, List<Reprise> reprises, ReglesGeneration regles,
+            LocalDate aujourdhui) {
+        Placement placement = new Placement(reprises);
         List<String> problemes = new ArrayList<>();
         List<Lettre.Paragraphe> paragraphes = new ArrayList<>();
         List<List<PhraseLettre>> parties = Arrays.asList(g.vous(), g.moi(), g.nous());
@@ -361,6 +519,10 @@ public final class GenerationDossier {
         for (int i = 0; i < parties.size(); i++) {
             List<Assertion> phrases = new ArrayList<>();
             for (PhraseLettre p : liste(parties.get(i))) {
+                if (placement.demande(p.reprise())) {
+                    phrases.add(placement.phrase(p.reprise()));
+                    continue;
+                }
                 String texte = net(p.texte());
                 if (texte.isEmpty()) {
                     continue;
@@ -385,6 +547,7 @@ public final class GenerationDossier {
         }
         Lettre lettre = new Lettre(profil.identite(), destinataire(cible), lieuEtDate(profil.identite(), aujourdhui),
                 objet(cible), paragraphes);
+        problemes.addAll(placement.problemes());
         problemes.addAll(violations(lettre.assertions(),
                 Tracabilite.verifier(lettre.assertions(), profil, cible.lacunes(), cible.texteBrut())));
         int mots = lettre.mots();
@@ -453,7 +616,7 @@ public final class GenerationDossier {
     // --- la révision ---
 
     private record Version(
-            Cv cv, Lettre lettre, Evaluation evaluation, List<Cv.Puce> retirees, List<String> avertissements,
+            Cv cv, Lettre lettre, Evaluation evaluation, List<Dossier.Retiree> retirees, List<String> avertissements,
             List<String> correctionsEcartees, String texteCv, String texteLettre) {}
 
     /** Ce que la passe suivante reçoit : la version précédente telle que relue, et ce qu'on lui reproche. */
@@ -470,7 +633,7 @@ public final class GenerationDossier {
         });
         if (!v.retirees().isEmpty()) {
             r.append("\n\nCes puces n'ont pas tenu sur la page :\n- ")
-                    .append(v.retirees().stream().map(p -> p.assertion().texte()).collect(Collectors.joining("\n- ")));
+                    .append(v.retirees().stream().map(x -> x.puce().assertion().texte()).collect(Collectors.joining("\n- ")));
         }
         AvisRecruteur avis = v.evaluation().avis();
         r.append("\n\nAvis du recruteur :\n").append(avis.criteres().stream()

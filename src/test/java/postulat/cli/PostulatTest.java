@@ -782,23 +782,23 @@ class PostulatTest {
         static CvGenere cv(String puce) {
             return new CvGenere(List.of(
                     new SectionGeneree("Expériences", List.of(new BlocGenere(new PhraseGeneree("Stagiaire data analyst — Acme",
-                            List.of("exp-acme")), new PhraseGeneree("2025", List.of("exp-acme")),
-                            List.of(new PuceGeneree(puce, List.of("exp-acme-r1"), 1),
-                                    new PuceGeneree("Mis en place des contrôles SQL quotidiens", List.of("exp-acme-r2"), 2)))), List.of()),
-                    new SectionGeneree("Compétences", List.of(), List.of(new PhraseGeneree("SQL", List.of("comp-sql"))))));
+                            List.of("exp-acme"), ""), new PhraseGeneree("2025", List.of("exp-acme"), ""),
+                            List.of(new PuceGeneree(puce, List.of("exp-acme-r1"), 1, ""),
+                                    new PuceGeneree("Mis en place des contrôles SQL quotidiens", List.of("exp-acme-r2"), 2, "")))), List.of()),
+                    new SectionGeneree("Compétences", List.of(), List.of(new PhraseGeneree("SQL", List.of("comp-sql"), "")))));
         }
 
         static final CvGenere CV = cv("Suivi des ventes sous Power BI");
 
         static final LettreGeneree LETTRE = new LettreGeneree(
                 List.of(new PhraseLettre("Acme, éditeur lyonnais de logiciels de gestion, cherche un stagiaire data analyst pour six "
-                        + "mois à partir de mars 2027.", "offre", List.of())),
+                        + "mois à partir de mars 2027.", "offre", List.of(), "")),
                 List.of(new PhraseLettre("Lors de mon stage chez Acme, j'ai suivi les ventes sous Power BI et mis en place des "
-                        + "contrôles SQL quotidiens.", "faits", List.of("exp-acme-r1", "exp-acme-r2")),
+                        + "contrôles SQL quotidiens.", "faits", List.of("exp-acme-r1", "exp-acme-r2"), ""),
                         new PhraseLettre("Mon master data à l'Université Lumière complète cette pratique.", "faits",
-                                List.of("form-master"))),
+                                List.of("form-master"), "")),
                 List.of(new PhraseLettre("Fiabiliser vos données avec vous serait pour moi une suite naturelle, et j'aimerais en "
-                        + "parler lors d'un entretien.", "faits", List.of("exp-acme-r2"))));
+                        + "parler lors d'un entretien.", "faits", List.of("exp-acme-r2"), "")));
 
         static AvisLu avis(int note) {
             return new AvisLu(Arrays.stream(Critere.values()).map(c -> new CritereLu(c.name(), note, "Solide.")).toList(),
@@ -826,9 +826,9 @@ class PostulatTest {
                     .contains("Dossier de #1 Acme — Stagiaire data analyst : jusqu'à 3 passe(s) de trois appels à claude-opus-5-5.")
                     .contains("  Première passe : CV ciblé…")
                     .contains("Note globale : 87/100, seuil 75 atteint — ATS 67/100 · recruteur 100/100")
-                    .contains("      • Suivi des ventes sous Power BI [exp-acme-r1] (pertinence 1)")
+                    .contains("   3    • Suivi des ventes sous Power BI [exp-acme-r1] (pertinence 1)")
                     .contains("Lettre — Acme — Service du recrutement · Le 10 octobre 2026")
-                    .contains("    Acme, éditeur lyonnais de logiciels de gestion, cherche un stagiaire data analyst pour six mois à "
+                    .contains("   6    Acme, éditeur lyonnais de logiciels de gestion, cherche un stagiaire data analyst pour six mois à "
                             + "partir de mars 2027. [offre]")
                     .contains("  retrouvées : [O] SQL").contains("  absentes : [S] Tableau")
                     .contains("  Langue 5/5 — Solide.")
@@ -916,6 +916,132 @@ class PostulatTest {
             assertThat(reussi("voir", "1").sortie()).contains("Dossier : aucun dossier rattaché.")
                     .contains("Modèle de langage : 4 appels");
             assertThat(dossier.resolve("apercus").resolve("dossier-1-cv.pdf")).doesNotExist();
+        }
+
+        // --- UC-08 : corriger à la main ---
+
+        static final PhraseGeneree INTITULE = new PhraseGeneree("Stagiaire data analyst — Acme", List.of("exp-acme"), "");
+        static final PhraseGeneree PRECISION = new PhraseGeneree("2025", List.of("exp-acme"), "");
+        static final SectionGeneree COMPETENCES = new SectionGeneree("Compétences", List.of(),
+                List.of(new PhraseGeneree("SQL", List.of("comp-sql"), "")));
+
+        /** Un CV qui remplit la page : des puces en ont été retirées, il n'y reste pas une ligne de libre. */
+        static CvGenere cvPlein() {
+            List<PuceGeneree> puces = java.util.stream.IntStream.rangeClosed(1, 90)
+                    .mapToObj(i -> new PuceGeneree("Suivi des ventes sous Power BI pour l'équipe commerciale, avec des indicateurs "
+                            + "relus chaque semaine par les commerciaux et la direction", List.of("exp-acme-r1"), i, ""))
+                    .toList();
+            return new CvGenere(List.of(new SectionGeneree("Expériences", List.of(new BlocGenere(INTITULE, PRECISION, puces)), List.of()),
+                    COMPETENCES));
+        }
+
+        void dossierGenere(CvGenere cv) throws IOException {
+            candidaturePrete();
+            faux.repondre(cv).repondre(LETTRE).repondre(avis(5));
+            reussi("dossier", "generer", "1");
+        }
+
+        @Test
+        void une_phrase_reecrite_devient_de_votre_main_sans_aucun_appel() throws IOException {
+            dossierGenere(CV);
+
+            Resultat r = reussi("dossier", "modifier", "1", "3", "Suivi", "hebdomadaire des ventes", "sous", "Power", "BI");
+
+            assertThat(r.sortie())
+                    .contains("Phrase n° 3 réécrite, désormais de votre main (RG-27) :" + FIN
+                            + "  « Suivi hebdomadaire des ventes sous Power BI »")
+                    .contains("CV : une page, mise en page « ")
+                    .contains("Filtre ATS : 67 → 67/100.")
+                    .contains("L'avis du recruteur date d'avant cette correction. Pour un nouvel avis, un appel au modèle : "
+                            + "postulat dossier evaluer 1")
+                    .contains("Aperçus : ");
+            assertThat(faux.demandes()).hasSize(5);
+            assertThat(reussi("dossier", "voir", "1").sortie())
+                    .contains("généré le 10/10/2026, corrigé le 10/10/2026.")
+                    .contains("   3    • Suivi hebdomadaire des ventes sous Power BI [de votre main] (pertinence 1)")
+                    .contains("recruteur 100/100, avis antérieur à vos corrections")
+                    .contains("Recruteur : 100/100 — avis antérieur à vos corrections")
+                    .contains("Pour un avis sur la version actuelle : postulat dossier evaluer 1")
+                    .contains("dont 1 de votre main");
+        }
+
+        @Test
+        void une_correction_impossible_est_refusee_et_ne_change_rien() throws IOException {
+            candidaturePrete();
+            assertThat(postulat("dossier", "modifier", "1", "3", "Texte").erreurs()).contains("n'a pas encore de dossier");
+            faux.repondre(CV).repondre(LETTRE).repondre(avis(5));
+            reussi("dossier", "generer", "1");
+
+            assertThat(postulat("dossier", "modifier", "1", "99", "Texte").erreurs()).contains("pas de phrase n° 99 : elles vont de 1 à 9");
+            assertThat(postulat("dossier", "modifier", "1", "3", "Suivi des ventes sous Power BI").erreurs()).contains("rien n'a changé");
+            assertThat(postulat("dossier", "supprimer", "1", "6").erreurs()).contains("seule phrase de sa partie");
+            assertThat(postulat("dossier", "reintroduire", "1", "R1").erreurs()).contains("Aucune puce n'a été retirée");
+            Resultat illisible = postulat("dossier", "reintroduire", "1", "x");
+            assertThat(illisible.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(illisible.erreurs()).contains("« x » ne désigne pas une puce retirée");
+            assertThat(reussi("dossier", "voir", "1").sortie()).doesNotContain("corrigé le").contains("dont 0 de votre main");
+        }
+
+        @Test
+        void sans_son_intitule_une_experience_part_en_entier() throws IOException {
+            dossierGenere(CV);
+
+            assertThat(reussi("dossier", "supprimer", "1", "1").sortie())
+                    .contains("Retirée : « Stagiaire data analyst — Acme », avec le reste de son bloc (3 phrase(s)).");
+            assertThat(reussi("dossier", "voir", "1").sortie()).doesNotContain("EXPÉRIENCES").contains("   1    SQL [comp-sql]");
+        }
+
+        /** UC-08 E1 et A2 : ce qui déborderait est refusé avant d'être accepté ; la place libérée rend une puce retirée. */
+        @Test
+        void sur_une_page_pleine_on_ne_gagne_de_place_qu_en_en_liberant() throws IOException {
+            dossierGenere(cvPlein());
+            String trop = "2025, " + "six mois au sein de l'équipe data, au plus près des commerciaux et de la direction ; ".repeat(12);
+
+            Resultat reintroduite = postulat("dossier", "reintroduire", "1", "R1");
+            Resultat allongee = postulat("dossier", "modifier", "1", "2", trop);
+
+            assertThat(reintroduite.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(reintroduite.erreurs()).contains("Correction refusée, rien n'a été modifié. Le CV dépasserait une page de")
+                    .contains("supprimez d'abord une autre phrase");
+            assertThat(allongee.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(reussi("dossier", "voir", "1").sortie()).doesNotContain("corrigé le");
+
+            reussi("dossier", "supprimer", "1", "3");
+            assertThat(reussi("dossier", "reintroduire", "1", "R1").sortie())
+                    .contains("Remise dans son bloc : « Suivi des ventes sous Power BI pour l'équipe commerciale");
+        }
+
+        @Test
+        void un_nouvel_avis_juge_la_version_corrigee() throws IOException {
+            dossierGenere(CV);
+            reussi("dossier", "modifier", "1", "3", "Suivi des ventes hebdomadaires");
+            faux.repondre(avis(4));
+
+            Resultat r = reussi("dossier", "evaluer", "1");
+
+            assertThat(r.sortie()).contains("Note globale : 87 → 75/100, seuil 75.").contains("Recruteur : 80/100" + FIN)
+                    .contains("Coût de l'avis : 1 appel, 0,0015 $.");
+            assertThat(faux.demandes().get(5).contenu()).contains("Suivi des ventes hebdomadaires");
+            assertThat(reussi("dossier", "voir", "1").sortie()).doesNotContain("avis antérieur").contains("corrigé le 10/10/2026");
+        }
+
+        @Test
+        void une_regeneration_reporte_vos_phrases_telles_quelles() throws IOException {
+            dossierGenere(CV);
+            reussi("dossier", "modifier", "1", "3", "Suivi hebdomadaire des ventes sous Power BI");
+            faux.repondre(new CvGenere(List.of(new SectionGeneree("Expériences", List.of(new BlocGenere(INTITULE, PRECISION, List.of(
+                            new PuceGeneree("", List.of(), 1, "A1"),
+                            new PuceGeneree("Mis en place des contrôles SQL quotidiens", List.of("exp-acme-r2"), 2, "")))), List.of()),
+                    COMPETENCES)))
+                    .repondre(LETTRE).repondre(avis(5));
+
+            Resultat r = reussi("dossier", "generer", "1");
+
+            assertThat(r.sortie()).contains("1 phrase(s) de votre main reportée(s) telles quelles : le modèle n'en choisit que la place")
+                    .contains("   3    • Suivi hebdomadaire des ventes sous Power BI [de votre main] (pertinence 1)");
+            assertThat(faux.demandes().get(5).contenu()).contains("- A1 (section « Expériences », bloc « Stagiaire data analyst — "
+                    + "Acme ») : « Suivi hebdomadaire des ventes sous Power BI »");
+            assertThat(reussi("dossier", "voir", "1").sortie()).doesNotContain("corrigé le").doesNotContain("avis antérieur");
         }
     }
 

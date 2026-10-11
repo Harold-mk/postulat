@@ -25,7 +25,9 @@ import postulat.ia.GenerationDossier.LettreGeneree;
 import postulat.ia.GenerationDossier.PhraseGeneree;
 import postulat.ia.GenerationDossier.PhraseLettre;
 import postulat.ia.GenerationDossier.PuceGeneree;
+import postulat.ia.GenerationDossier.Reprise;
 import postulat.ia.GenerationDossier.SectionGeneree;
+import postulat.production.Assertion;
 import postulat.production.Competence;
 import postulat.production.Couverture;
 import postulat.production.Critere;
@@ -77,11 +79,11 @@ class GenerationDossierTest {
     // --- réponses du modèle ---
 
     static PhraseGeneree phrase(String texte, String... faits) {
-        return new PhraseGeneree(texte, List.of(faits));
+        return new PhraseGeneree(texte, List.of(faits), "");
     }
 
     static PuceGeneree puce(String texte, int rang, String... faits) {
-        return new PuceGeneree(texte, List.of(faits), rang);
+        return new PuceGeneree(texte, List.of(faits), rang, "");
     }
 
     static CvGenere cv(PuceGeneree... puces) {
@@ -98,11 +100,11 @@ class GenerationDossierTest {
     }
 
     static PhraseLettre faits(String texte, String... ids) {
-        return new PhraseLettre(texte, "faits", List.of(ids));
+        return new PhraseLettre(texte, "faits", List.of(ids), "");
     }
 
     static PhraseLettre offre(String texte) {
-        return new PhraseLettre(texte, "offre", null);
+        return new PhraseLettre(texte, "offre", null, null);
     }
 
     static final PhraseLettre VOUS_1 = offre("Globex recherche un stagiaire data analyst à Lyon pour six mois, au sein d'une "
@@ -129,7 +131,7 @@ class GenerationDossierTest {
     final List<String> progression = new ArrayList<>();
 
     Dossier generer(FauxModele faux) {
-        return GenerationDossier.generer(faux, PROFIL, CIBLE, REGLES, JOUR, progression::add);
+        return GenerationDossier.generer(faux, PROFIL, CIBLE, List.of(), REGLES, JOUR, progression::add);
     }
 
     ErreurModele echec(FauxModele faux) {
@@ -213,7 +215,7 @@ class GenerationDossierTest {
             Profil incomplet = new Profil(new Identite("", "", "", ""), PROFIL.experiences(), PROFIL.formations(), PROFIL.competences());
             FauxModele faux = new FauxModele();
 
-            assertThatThrownBy(() -> GenerationDossier.generer(faux, incomplet, CIBLE, REGLES, JOUR, progression::add))
+            assertThatThrownBy(() -> GenerationDossier.generer(faux, incomplet, CIBLE, List.of(), REGLES, JOUR, progression::add))
                     .hasMessageContaining("UC-07 E1");
             assertThat(faux.demandes()).isEmpty();
         }
@@ -230,7 +232,7 @@ class GenerationDossierTest {
             Cible cible = new Cible(CANDIDATURE, "", "", sansExigence, TEXTE_OFFRE, Optional.empty());
             FauxModele faux = new FauxModele().repondre(cv()).repondre(lettre()).repondre(avis(4));
 
-            Dossier d = GenerationDossier.generer(faux, PROFIL, cible, REGLES, JOUR, progression::add);
+            Dossier d = GenerationDossier.generer(faux, PROFIL, cible, List.of(), REGLES, JOUR, progression::add);
 
             assertThat(cible.lacunes()).isEmpty();
             assertThat(faux.demandes().get(0).contenu()).contains("L'offre n'énonce aucune exigence.");
@@ -305,7 +307,7 @@ class GenerationDossierTest {
         @Test
         void une_lettre_hors_structure_hors_longueur_ou_d_origine_inconnue_est_redemandee() {
             LettreGeneree fautive = new LettreGeneree(List.of(VOUS_1), List.of(offre("Je suis rigoureuse."),
-                    new PhraseLettre("Je parle japonais.", "auteur", List.of())), List.of());
+                    new PhraseLettre("Je parle japonais.", "auteur", List.of(), "")), List.of());
             FauxModele faux = new FauxModele().repondre(cv()).repondre(fautive).repondre(lettre()).repondre(avis(4));
 
             generer(faux);
@@ -336,7 +338,7 @@ class GenerationDossierTest {
             ReglesGeneration large = new ReglesGeneration(75, 40, 0, 50, 2000);
             FauxModele faux = new FauxModele().repondre(cv()).repondre(fleuve).repondre(fleuve);
 
-            assertThatThrownBy(() -> GenerationDossier.generer(faux, PROFIL, CIBLE, large, JOUR, progression::add))
+            assertThatThrownBy(() -> GenerationDossier.generer(faux, PROFIL, CIBLE, List.of(), large, JOUR, progression::add))
                     .hasMessageContaining("dépasse une page");
         }
 
@@ -424,7 +426,7 @@ class GenerationDossierTest {
                     .repondre(cv()).repondre(lettre()).repondre(avis(3, "Ajoutez Kubernetes", "Resserrez la lettre"))
                     .repondre(cv()).repondre(lettre()).repondre(avis(2));
 
-            Dossier d = GenerationDossier.generer(faux, PROFIL, CIBLE, uneRevision, JOUR, progression::add);
+            Dossier d = GenerationDossier.generer(faux, PROFIL, CIBLE, List.of(), uneRevision, JOUR, progression::add);
 
             assertThat(taches(faux)).hasSize(6);
             assertThat(d.evaluation().noteGlobale()).isEqualTo(68);
@@ -440,7 +442,7 @@ class GenerationDossierTest {
             ReglesGeneration aucune = new ReglesGeneration(75, 40, 0, 50, 120);
             FauxModele faux = new FauxModele().repondre(cv()).repondre(lettre()).repondre(avis(1));
 
-            Dossier d = GenerationDossier.generer(faux, PROFIL, CIBLE, aucune, JOUR, progression::add);
+            Dossier d = GenerationDossier.generer(faux, PROFIL, CIBLE, List.of(), aucune, JOUR, progression::add);
 
             assertThat(d.rapport().passes()).isEqualTo(1);
             assertThat(d.rapport().avertissements().get(0)).contains("après 1 passe(s)");
@@ -462,10 +464,133 @@ class GenerationDossierTest {
             Dossier d = generer(faux);
 
             assertThat(d.rapport().retirees()).isNotEmpty();
-            assertThat(d.rapport().retirees().get(0).rang()).isEqualTo(90);
+            assertThat(d.rapport().retirees().get(0).puce().rang()).isEqualTo(90);
             int gardees = d.cv().puces().size();
             assertThat(gardees + d.rapport().retirees().size()).isEqualTo(90);
             assertThat(d.cv().puces()).extracting(Cv.Puce::rang).allMatch(r -> r <= gardees);
+        }
+    }
+
+    /** UC-08 A1, RG-27 : à la régénération, les phrases de l'auteur reviennent au mot près ; le modèle n'en choisit que la place. */
+    @Nested
+    class PhrasesDeLAuteur {
+
+        static final Reprise ATELIER = new Reprise("A1", true, "section « Expériences », bloc « Stagiaire data analyst — Acme »",
+                "Animé un atelier interne");
+        static final Reprise ESPAGNOL = new Reprise("A2", false, "partie « Moi »", "Je parle couramment espagnol.");
+
+        static PuceGeneree reprise(String reference, int rang) {
+            return new PuceGeneree("", List.of(), rang, reference);
+        }
+
+        static LettreGeneree lettreAvec(PhraseLettre moi) {
+            return new LettreGeneree(List.of(VOUS_1, VOUS_2), List.of(MOI_1, moi), List.of(NOUS_1, NOUS_2));
+        }
+
+        Dossier regenerer(FauxModele faux) {
+            return GenerationDossier.generer(faux, PROFIL, CIBLE, List.of(ATELIER, ESPAGNOL), REGLES, JOUR, progression::add);
+        }
+
+        @Test
+        void le_contexte_de_chaque_phrase_de_l_auteur_aide_a_la_replacer() {
+            Dossier d = generer(new FauxModele().repondre(cv()).repondre(lettre()).repondre(avis(4)));
+            Dossier corrige = d.corriger(1, "Data analyst — Acme").corriger(2, "Six mois en 2025").corriger(3, "Bâti le suivi des ventes")
+                    .corriger(5, "SQL, Python").corriger(9, "Je parle couramment espagnol.");
+
+            assertThat(GenerationDossier.reprises(corrige)).containsExactly(
+                    new Reprise("A1", true, "section « Expériences », intitulé de bloc", "Data analyst — Acme"),
+                    new Reprise("A2", true, "section « Expériences », bloc « Data analyst — Acme », précision", "Six mois en 2025"),
+                    new Reprise("A3", true, "section « Expériences », bloc « Data analyst — Acme »", "Bâti le suivi des ventes"),
+                    new Reprise("A4", true, "section « Compétences »", "SQL, Python"),
+                    new Reprise("A5", false, "partie « Moi »", "Je parle couramment espagnol."));
+            assertThat(GenerationDossier.reprises(d)).isEmpty();
+        }
+
+        @Test
+        void elles_reviennent_au_mot_pres_chacune_dans_son_document() {
+            FauxModele faux = new FauxModele()
+                    .repondre(cv(puce("Conçu un tableau de bord Power BI de 5 KPI pour 12 commerciaux", 1, "exp-acme-r1"), reprise("a1", 2)))
+                    .repondre(lettreAvec(new PhraseLettre(null, null, null, " A2 "))).repondre(avis(4));
+
+            Dossier d = regenerer(faux);
+
+            assertThat(d.cv().puces().get(1).assertion()).isEqualTo(new Assertion("Animé un atelier interne", new Origine.Auteur()));
+            assertThat(d.lettre().paragraphes().get(1).phrases().get(1))
+                    .isEqualTo(new Assertion("Je parle couramment espagnol.", new Origine.Auteur()));
+            assertThat(d.assertionsDeLAuteur()).isEqualTo(2);
+            assertThat(faux.demandes().get(0).consignes()).contains("écrivant sa référence dans « reprise »");
+            assertThat(faux.demandes().get(0).contenu()).contains("Phrases de l'auteur, à reprendre telles quelles :\n- A1 (section "
+                    + "« Expériences », bloc « Stagiaire data analyst — Acme ») : « Animé un atelier interne »").doesNotContain("A2");
+            assertThat(faux.demandes().get(1).contenu()).contains("- A2 (partie « Moi ») : « Je parle couramment espagnol. »")
+                    .doesNotContain("- A1");
+        }
+
+        @Test
+        void une_phrase_de_l_auteur_oubliee_doublee_ou_inventee_fait_redemander() {
+            CvGenere fautif = cv(reprise("A1", 1), reprise("A1", 2), reprise("A9", 3));
+            FauxModele faux = new FauxModele()
+                    .repondre(fautif).repondre(cv(reprise("A1", 1)))
+                    .repondre(lettreAvec(MOI_2)).repondre(lettreAvec(new PhraseLettre("", "", List.of(), "A2"))).repondre(avis(5));
+
+            Dossier d = regenerer(faux);
+
+            assertThat(faux.demandes().get(1).contenu()).contains("La phrase de l'auteur A1 est placée 2 fois")
+                    .contains("La référence « A9 » ne désigne aucune phrase de l'auteur de ce document.");
+            assertThat(faux.demandes().get(3).contenu()).contains("La phrase de l'auteur A2 manque : elle se reporte telle quelle (RG-27).");
+            assertThat(d.assertionsDeLAuteur()).isEqualTo(2);
+        }
+
+        @Test
+        void une_phrase_du_cv_ne_passe_pas_dans_la_lettre() {
+            FauxModele faux = new FauxModele().repondre(cv(reprise("A1", 1)))
+                    .repondre(lettreAvec(new PhraseLettre("", "", List.of(), "A1")))
+                    .repondre(lettreAvec(new PhraseLettre("", "", List.of(), "A1")));
+
+            assertThat(echecDe(faux).getMessage()).contains("« A1 » ne désigne aucune phrase de l'auteur de ce document")
+                    .contains("A2 manque");
+        }
+
+        ErreurModele echecDe(FauxModele faux) {
+            try {
+                regenerer(faux);
+            } catch (ErreurModele e) {
+                return e;
+            }
+            throw new AssertionError("un échec était attendu");
+        }
+    }
+
+    /** UC-08, étape 7 : un nouvel avis sur le dossier corrigé, sans rien régénérer. */
+    @Nested
+    class Reevaluation {
+
+        @Test
+        void seul_l_avis_est_redemande_sur_le_dossier_tel_qu_il_est() {
+            Dossier d = generer(new FauxModele().repondre(cv()).repondre(lettre()).repondre(avis(4)));
+            Dossier corrige = d.corriger(3, "Bâti un suivi des ventes sous Power BI");
+            FauxModele faux = new FauxModele().repondre(avis(5, "Mentionnez Kubernetes", "Citez SQL dans la lettre"));
+
+            Dossier r = GenerationDossier.reevaluer(faux, PROFIL, CIBLE, corrige);
+
+            assertThat(taches(faux)).containsExactly("avis-recruteur");
+            assertThat(faux.demandes().get(0).contenu()).contains("Bâti un suivi des ventes sous Power BI");
+            assertThat(r.cv()).isEqualTo(corrige.cv());
+            assertThat(r.lettre()).isEqualTo(corrige.lettre());
+            assertThat(r.evaluation().avis().note()).isEqualTo(100);
+            assertThat(r.evaluation().avis().corrections()).containsExactly("Citez SQL dans la lettre");
+            assertThat(r.rapport().correctionsEcartees()).containsExactly("Mentionnez Kubernetes");
+            assertThat(r.evaluation().ats()).hasValueSatisfying(a -> assertThat(a.note()).isEqualTo(80));
+            assertThat(r.rapport().passes()).isEqualTo(1);
+        }
+
+        @Test
+        void un_profil_incomplet_est_refuse_avant_l_appel() {
+            Dossier d = generer(new FauxModele().repondre(cv()).repondre(lettre()).repondre(avis(4)));
+            Profil incomplet = new Profil(new Identite("", "", "", ""), PROFIL.experiences(), PROFIL.formations(), PROFIL.competences());
+            FauxModele faux = new FauxModele();
+
+            assertThatThrownBy(() -> GenerationDossier.reevaluer(faux, incomplet, CIBLE, d)).hasMessageContaining("incomplet");
+            assertThat(faux.demandes()).isEmpty();
         }
     }
 
