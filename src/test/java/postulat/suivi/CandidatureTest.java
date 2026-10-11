@@ -401,4 +401,53 @@ class CandidatureTest {
             assertThat(c.memeOffre("Générale", "Stage – Data")).isFalse();
         }
     }
+
+    /** UC-09 : la validation d'une version du dossier, et la version envoyée, que le journal désigne sans ambiguïté (CA-6.12). */
+    @Nested
+    class Validation {
+
+        static Candidature aPreparer() {
+            return Candidature.creer("Acme", "Stage data", Etape.A_PREPARER, J0, AUJOURDHUI);
+        }
+
+        @Test
+        void la_premiere_version_fait_entrer_la_candidature_a_l_etape_prete_jamais_envoyee() {
+            Candidature c = aPreparer().valider(1, J0.plusDays(2), AUJOURDHUI);
+
+            assertThat(c.etape()).isEqualTo(Etape.PRETE);
+            assertThat(c.journal()).endsWith(new Evenement.ChangementEtape(J0.plusDays(2), Etape.PRETE),
+                    new Evenement.DossierValide(J0.plusDays(2), 1));
+            assertThat(c.dateEntreeEtape()).isEqualTo(J0.plusDays(2));
+        }
+
+        @Test
+        void une_nouvelle_version_se_valide_a_l_etape_prete_sans_en_changer() {
+            Candidature c = aPreparer().valider(1, J0, AUJOURDHUI).valider(2, J0.plusDays(3), AUJOURDHUI);
+
+            assertThat(c.etape()).isEqualTo(Etape.PRETE);
+            assertThat(c.journal()).hasSize(4).last().isEqualTo(new Evenement.DossierValide(J0.plusDays(3), 2));
+            assertThat(c.dateEntreeEtape()).isEqualTo(J0);
+        }
+
+        @Test
+        void hors_de_a_preparer_et_prete_on_ne_valide_pas() {
+            assertThatThrownBy(() -> repereeLe(J0).valider(1, J0, AUJOURDHUI)).isInstanceOf(RefusMetier.class)
+                    .hasMessageContaining("« à_préparer » ou « prête »").hasMessageContaining("repérée");
+            assertThatThrownBy(() -> envoyeeLe(J0).valider(1, J0, AUJOURDHUI)).isInstanceOf(RefusMetier.class);
+            assertThatThrownBy(() -> new Evenement.DossierValide(J0, 0)).hasMessageContaining("à partir de 1");
+        }
+
+        @Test
+        void la_version_envoyee_est_la_derniere_validee_avant_l_envoi() {
+            Candidature prete = aPreparer().valider(1, J0, AUJOURDHUI).valider(2, J0, AUJOURDHUI);
+
+            assertThat(prete.versionEnvoyee()).isEmpty();
+            Candidature envoyee = prete.avancer(Etape.ENVOYEE, J0.plusDays(1), AUJOURDHUI);
+            assertThat(envoyee.versionEnvoyee()).contains(2);
+            assertThat(envoyee.noter("Relu la version 2", J0.plusDays(2), AUJOURDHUI).versionEnvoyee()).contains(2);
+            assertThat(envoyeeLe(J0).versionEnvoyee()).isEmpty();
+            assertThat(aPreparer().avancer(Etape.PRETE, J0, AUJOURDHUI).avancer(Etape.ENVOYEE, J0, AUJOURDHUI).versionEnvoyee())
+                    .isEmpty();
+        }
+    }
 }

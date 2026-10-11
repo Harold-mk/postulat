@@ -19,16 +19,20 @@ import postulat.production.Dossier;
 import postulat.production.Evaluation;
 import postulat.production.Exigence;
 import postulat.production.Identite;
+import postulat.production.Instantane;
 import postulat.production.Lettre;
 import postulat.production.NoteAts;
 import postulat.production.Origine;
 import postulat.production.ReglesGeneration;
 
 /**
- * Le dossier mis en tables, phrase par phrase (migration V4), et relu à l'identique. Les transactions
- * restent à {@link Base} : ici, on ne fait que traduire.
+ * Une version du dossier mise en tables, phrase par phrase (migrations V4 à V6), et relue à
+ * l'identique : la version 0 est le brouillon courant, les suivantes les versions validées, que des
+ * triggers rendent immuables. Les transactions restent à {@link Base} : ici, on ne fait que traduire.
  */
 final class TablesDossier {
+
+    static final int BROUILLON = 0;
 
     private static final String CV = "CV";
     private static final String LETTRE = "LETTRE";
@@ -51,35 +55,60 @@ final class TablesDossier {
 
     private final Connection connexion;
     private final String id;
+    private final int version;
 
-    TablesDossier(Connection connexion, UUID candidature) {
+    TablesDossier(Connection connexion, UUID candidature, int version) {
         this.connexion = connexion;
         this.id = candidature.toString();
+        this.version = version;
     }
 
     // --- écriture ---
 
-    /** Remplace le dossier courant : rien de l'ancien ne survit à côté du nouveau. */
-    void ecrire(DossierGenere g) throws SQLException {
-        effacer();
+    /** Remplace le brouillon : rien de l'ancien ne survit à côté du nouveau. */
+    void ecrireBrouillon(DossierGenere g) throws SQLException {
+        exigerBrouillon();
+        for (String table : TABLES_FILLES) {
+            executer("DELETE FROM " + table + " WHERE candidature_id = ? AND version = ?", id, version);
+        }
+        executer("DELETE FROM dossier WHERE candidature_id = ? AND version = ?", id, version);
+        inserer(g, null, null);
+    }
+
+    /** Ajoute une version validée, avec l'instantané des faits qu'elle cite. Elle ne se touchera plus. */
+    void ecrireVersion(VersionValidee v) throws SQLException {
+        if (version == BROUILLON || v.version() != version) {
+            throw new IllegalStateException("Version validée incohérente : " + v.version() + " au lieu de " + version + ".");
+        }
+        inserer(v.dossier(), v.valideLe().toString(), v.repertoire());
+        for (int i = 0; i < v.faits().size(); i++) {
+            Instantane f = v.faits().get(i);
+            executer("INSERT INTO dossier_fait (candidature_id, version, rang, fait_id, contenu) VALUES (?, ?, ?, ?, ?)",
+                    id, version, i, f.fait(), f.contenu());
+        }
+    }
+
+    private void inserer(DossierGenere g, String valideLe, String repertoire) throws SQLException {
         Dossier d = g.dossier();
         Identite e = d.cv().entete();
         Lettre l = d.lettre();
         Evaluation ev = d.evaluation();
         ReglesGeneration r = ev.regles();
-        executer("INSERT INTO dossier (candidature_id, genere_le, empreinte_profil, passes, nom, titre, contact, lieu, "
-                + "destinataire, lieu_et_date, objet, paragraphes, note_ats, ats_lisible, seuil, poids_ats, revisions_max, "
-                + "mots_min, mots_max, corrige_le, avis_perime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                id, g.genereLe().toString(), g.empreinteProfil(), d.rapport().passes(), e.nom(), e.titre(), e.contact(), e.lieu(),
-                l.destinataire(), l.lieuEtDate(), l.objet(), l.paragraphes().size(),
+        executer("INSERT INTO dossier (candidature_id, version, genere_le, empreinte_profil, modele, passes, nom, titre, contact, "
+                + "lieu, destinataire, lieu_et_date, objet, paragraphes, note_ats, ats_lisible, seuil, poids_ats, revisions_max, "
+                + "mots_min, mots_max, corrige_le, avis_perime, valide_le, repertoire) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                id, version, g.genereLe().toString(), g.empreinteProfil(), g.modele(), d.rapport().passes(),
+                e.nom(), e.titre(), e.contact(), e.lieu(), l.destinataire(), l.lieuEtDate(), l.objet(), l.paragraphes().size(),
                 ev.ats().map(NoteAts::note).orElse(null), ev.ats().map(a -> a.lisible() ? 1 : 0).orElse(null),
                 r.seuil(), r.poidsAts(), r.revisionsMax(), r.motsMin(), r.motsMax(),
-                g.corrigeLe().map(Instant::toString).orElse(null), g.avisPerime() ? 1 : 0);
+                g.corrigeLe().map(Instant::toString).orElse(null), g.avisPerime() ? 1 : 0, valideLe, repertoire);
 
         int[] rang = {0};
         for (int s = 0; s < d.cv().sections().size(); s++) {
             Cv.Section section = d.cv().sections().get(s);
-            executer("INSERT INTO dossier_section (candidature_id, rang, titre) VALUES (?, ?, ?)", id, s, section.titre());
+            executer("INSERT INTO dossier_section (candidature_id, version, rang, titre) VALUES (?, ?, ?, ?)", id, version, s,
+                    section.titre());
             for (int c = 0; c < section.contenus().size(); c++) {
                 switch (section.contenus().get(c)) {
                     case Cv.Bloc b -> {
@@ -110,28 +139,21 @@ final class TablesDossier {
             toutes.addAll(ev.ats().get().absentes());
             for (int i = 0; i < toutes.size(); i++) {
                 Exigence x = toutes.get(i);
-                executer("INSERT INTO dossier_exigence (candidature_id, rang, libelle, obligatoire, presente) VALUES (?, ?, ?, ?, ?)",
-                        id, i, x.libelle(), x.obligatoire() ? 1 : 0, i < presentes.size() ? 1 : 0);
+                executer("INSERT INTO dossier_exigence (candidature_id, version, rang, libelle, obligatoire, presente) "
+                        + "VALUES (?, ?, ?, ?, ?, ?)", id, version, i, x.libelle(), x.obligatoire() ? 1 : 0, i < presentes.size() ? 1 : 0);
             }
         }
         AvisRecruteur avis = ev.avis();
         for (int i = 0; i < avis.criteres().size(); i++) {
             AvisRecruteur.NoteCritere n = avis.criteres().get(i);
-            executer("INSERT INTO dossier_critere (candidature_id, rang, critere, note, justification) VALUES (?, ?, ?, ?, ?)",
-                    id, i, n.critere().name(), n.note(), n.justification());
+            executer("INSERT INTO dossier_critere (candidature_id, version, rang, critere, note, justification) VALUES (?, ?, ?, ?, ?, ?)",
+                    id, version, i, n.critere().name(), n.note(), n.justification());
         }
         remarques(FORCE, avis.forces());
         remarques(FAIBLESSE, avis.faiblesses());
         remarques(CORRECTION, avis.corrections());
         remarques(CORRECTION_ECARTEE, d.rapport().correctionsEcartees());
         remarques(AVERTISSEMENT, d.rapport().avertissements());
-    }
-
-    void effacer() throws SQLException {
-        for (String table : TABLES_FILLES) {
-            executer("DELETE FROM " + table + " WHERE candidature_id = ?", id);
-        }
-        executer("DELETE FROM dossier WHERE candidature_id = ?", id);
     }
 
     private void phrase(int[] rang, String document, int section, int contenu, String role, Integer pertinence, Assertion a)
@@ -141,12 +163,13 @@ final class TablesDossier {
             case Origine.Offre o -> "OFFRE";
             case Origine.Auteur au -> "AUTEUR";
         };
-        executer("INSERT INTO dossier_phrase (candidature_id, rang, document, section, contenu, role, pertinence, texte, origine) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", id, rang[0], document, section, contenu, role, pertinence, a.texte(), origine);
+        executer("INSERT INTO dossier_phrase (candidature_id, version, rang, document, section, contenu, role, pertinence, texte, "
+                + "origine) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                id, version, rang[0], document, section, contenu, role, pertinence, a.texte(), origine);
         if (a.origine() instanceof Origine.Faits f) {
             for (int i = 0; i < f.ids().size(); i++) {
-                executer("INSERT INTO dossier_phrase_fait (candidature_id, rang, position, fait_id) VALUES (?, ?, ?, ?)",
-                        id, rang[0], i, f.ids().get(i));
+                executer("INSERT INTO dossier_phrase_fait (candidature_id, version, rang, position, fait_id) VALUES (?, ?, ?, ?, ?)",
+                        id, version, rang[0], i, f.ids().get(i));
             }
         }
         rang[0]++;
@@ -154,7 +177,8 @@ final class TablesDossier {
 
     private void remarques(String nature, List<String> textes) throws SQLException {
         for (int i = 0; i < textes.size(); i++) {
-            executer("INSERT INTO dossier_remarque (candidature_id, nature, rang, texte) VALUES (?, ?, ?, ?)", id, nature, i, textes.get(i));
+            executer("INSERT INTO dossier_remarque (candidature_id, version, nature, rang, texte) VALUES (?, ?, ?, ?, ?)",
+                    id, version, nature, i, textes.get(i));
         }
     }
 
@@ -163,9 +187,37 @@ final class TablesDossier {
     /** Une phrase relue, avec sa place dans le dossier. */
     private record Ligne(String document, int section, int contenu, String role, Integer pertinence, Assertion assertion) {}
 
-    Optional<DossierGenere> lire() throws SQLException {
-        try (PreparedStatement s = connexion.prepareStatement("SELECT * FROM dossier WHERE candidature_id = ?")) {
+    Optional<DossierGenere> lireBrouillon() throws SQLException {
+        exigerBrouillon();
+        return lire().map(Lu::dossier);
+    }
+
+    Optional<VersionValidee> lireVersion() throws SQLException {
+        Optional<Lu> lu = lire();
+        if (lu.isEmpty()) {
+            return Optional.empty();
+        }
+        List<Instantane> faits = new ArrayList<>();
+        try (PreparedStatement s = connexion.prepareStatement(
+                "SELECT fait_id, contenu FROM dossier_fait WHERE candidature_id = ? AND version = ? ORDER BY rang")) {
             s.setString(1, id);
+            s.setInt(2, version);
+            try (ResultSet r = s.executeQuery()) {
+                while (r.next()) {
+                    faits.add(new Instantane(r.getString(1), r.getString(2)));
+                }
+            }
+        }
+        return Optional.of(new VersionValidee(version, lu.get().dossier(), lu.get().valideLe().orElseThrow(),
+                lu.get().repertoire().orElseThrow(), faits));
+    }
+
+    private record Lu(DossierGenere dossier, Optional<Instant> valideLe, Optional<String> repertoire) {}
+
+    private Optional<Lu> lire() throws SQLException {
+        try (PreparedStatement s = connexion.prepareStatement("SELECT * FROM dossier WHERE candidature_id = ? AND version = ?")) {
+            s.setString(1, id);
+            s.setInt(2, version);
             try (ResultSet r = s.executeQuery()) {
                 if (!r.next()) {
                     return Optional.empty();
@@ -190,8 +242,10 @@ final class TablesDossier {
                 Dossier dossier = new Dossier(cv, lettre, new Evaluation(ats, avis, regles),
                         new Dossier.Rapport(r.getInt("passes"), retirees, remarques(AVERTISSEMENT), remarques(CORRECTION_ECARTEE)));
                 Optional<Instant> corrigeLe = Optional.ofNullable(r.getString("corrige_le")).map(Instant::parse);
-                return Optional.of(new DossierGenere(dossier, Instant.parse(r.getString("genere_le")), r.getString("empreinte_profil"),
-                        corrigeLe, r.getInt("avis_perime") == 1));
+                DossierGenere g = new DossierGenere(dossier, Instant.parse(r.getString("genere_le")), r.getString("empreinte_profil"),
+                        r.getString("modele"), corrigeLe, r.getInt("avis_perime") == 1);
+                return Optional.of(new Lu(g, Optional.ofNullable(r.getString("valide_le")).map(Instant::parse),
+                        Optional.ofNullable(r.getString("repertoire"))));
             }
         }
     }
@@ -199,8 +253,9 @@ final class TablesDossier {
     private List<Ligne> phrases() throws SQLException {
         Map<Integer, List<String>> faits = new LinkedHashMap<>();
         try (PreparedStatement s = connexion.prepareStatement(
-                "SELECT rang, fait_id FROM dossier_phrase_fait WHERE candidature_id = ? ORDER BY rang, position")) {
+                "SELECT rang, fait_id FROM dossier_phrase_fait WHERE candidature_id = ? AND version = ? ORDER BY rang, position")) {
             s.setString(1, id);
+            s.setInt(2, version);
             try (ResultSet r = s.executeQuery()) {
                 while (r.next()) {
                     faits.computeIfAbsent(r.getInt(1), k -> new ArrayList<>()).add(r.getString(2));
@@ -208,8 +263,10 @@ final class TablesDossier {
             }
         }
         List<Ligne> lignes = new ArrayList<>();
-        try (PreparedStatement s = connexion.prepareStatement("SELECT * FROM dossier_phrase WHERE candidature_id = ? ORDER BY rang")) {
+        try (PreparedStatement s = connexion.prepareStatement(
+                "SELECT * FROM dossier_phrase WHERE candidature_id = ? AND version = ? ORDER BY rang")) {
             s.setString(1, id);
+            s.setInt(2, version);
             try (ResultSet r = s.executeQuery()) {
                 while (r.next()) {
                     Origine origine = switch (r.getString("origine")) {
@@ -231,8 +288,9 @@ final class TablesDossier {
     private List<Cv.Section> sections(List<Ligne> lignes) throws SQLException {
         List<Cv.Section> sections = new ArrayList<>();
         try (PreparedStatement s = connexion.prepareStatement(
-                "SELECT rang, titre FROM dossier_section WHERE candidature_id = ? ORDER BY rang")) {
+                "SELECT rang, titre FROM dossier_section WHERE candidature_id = ? AND version = ? ORDER BY rang")) {
             s.setString(1, id);
+            s.setInt(2, version);
             try (ResultSet r = s.executeQuery()) {
                 while (r.next()) {
                     int numero = r.getInt(1);
@@ -264,9 +322,10 @@ final class TablesDossier {
     private NoteAts ats(int note, boolean lisible) throws SQLException {
         List<Exigence> presentes = new ArrayList<>();
         List<Exigence> absentes = new ArrayList<>();
-        try (PreparedStatement s = connexion.prepareStatement(
-                "SELECT libelle, obligatoire, presente FROM dossier_exigence WHERE candidature_id = ? ORDER BY rang")) {
+        try (PreparedStatement s = connexion.prepareStatement("SELECT libelle, obligatoire, presente FROM dossier_exigence "
+                + "WHERE candidature_id = ? AND version = ? ORDER BY rang")) {
             s.setString(1, id);
+            s.setInt(2, version);
             try (ResultSet r = s.executeQuery()) {
                 while (r.next()) {
                     Exigence e = new Exigence(r.getString(1), r.getInt(2) == 1);
@@ -279,9 +338,10 @@ final class TablesDossier {
 
     private List<AvisRecruteur.NoteCritere> criteres() throws SQLException {
         List<AvisRecruteur.NoteCritere> criteres = new ArrayList<>();
-        try (PreparedStatement s = connexion.prepareStatement(
-                "SELECT critere, note, justification FROM dossier_critere WHERE candidature_id = ? ORDER BY rang")) {
+        try (PreparedStatement s = connexion.prepareStatement("SELECT critere, note, justification FROM dossier_critere "
+                + "WHERE candidature_id = ? AND version = ? ORDER BY rang")) {
             s.setString(1, id);
+            s.setInt(2, version);
             try (ResultSet r = s.executeQuery()) {
                 while (r.next()) {
                     criteres.add(new AvisRecruteur.NoteCritere(Critere.valueOf(r.getString(1)), r.getInt(2), r.getString(3)));
@@ -294,9 +354,10 @@ final class TablesDossier {
     private List<String> remarques(String nature) throws SQLException {
         List<String> textes = new ArrayList<>();
         try (PreparedStatement s = connexion.prepareStatement(
-                "SELECT texte FROM dossier_remarque WHERE candidature_id = ? AND nature = ? ORDER BY rang")) {
+                "SELECT texte FROM dossier_remarque WHERE candidature_id = ? AND version = ? AND nature = ? ORDER BY rang")) {
             s.setString(1, id);
-            s.setString(2, nature);
+            s.setInt(2, version);
+            s.setString(3, nature);
             try (ResultSet r = s.executeQuery()) {
                 while (r.next()) {
                     textes.add(r.getString(1));
@@ -304,6 +365,12 @@ final class TablesDossier {
             }
         }
         return textes;
+    }
+
+    private void exigerBrouillon() {
+        if (version != BROUILLON) {
+            throw new IllegalStateException("Seul le brouillon se remplace ; une version validée ne se touche plus (RG-15).");
+        }
     }
 
     private void executer(String sql, Object... parametres) throws SQLException {

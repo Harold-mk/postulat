@@ -1,6 +1,8 @@
 package postulat.cli;
 
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
@@ -13,6 +15,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import postulat.stockage.Base;
 import postulat.stockage.DossierGenere;
+import postulat.stockage.VersionValidee;
 import postulat.stockage.CoutModele;
 import postulat.stockage.Numerotee;
 import postulat.stockage.Offre;
@@ -206,12 +209,14 @@ final class Consultations {
             CoutModele cout;
             Optional<Offre> offre;
             Optional<DossierGenere> dossier;
+            List<VersionValidee> versions;
             try (Base base = ouvrirBase()) {
                 n = trouver(base);
                 contacts = base.contacts(n.candidature().id());
                 cout = base.coutModele(n.candidature().id());
                 offre = base.offre(n.candidature().id());
                 dossier = base.dossier(n.candidature().id());
+                versions = base.versionsValidees(n.candidature().id());
             }
             Candidature c = n.candidature();
             PrintWriter out = sortie();
@@ -220,10 +225,23 @@ final class Consultations {
             out.println("Étape : " + c.etape() + ", depuis le " + Affichage.date(c.dateEntreeEtape()) + " ("
                     + Affichage.ilYA(c.dateEntreeEtape(), aujourdhui) + ")");
             // UC-12 A1 : l'absence de dossier se dit, elle ne se devine pas.
-            out.println(dossier.map(d -> "Dossier : généré le "
-                            + Affichage.date(LocalDate.ofInstant(d.genereLe(), racine().horloge().getZone())) + ", note globale "
-                            + d.dossier().evaluation().noteGlobale() + "/100, non validé. Pour le relire : postulat dossier voir " + n.numero())
-                    .orElse("Dossier : aucun dossier rattaché."));
+            if (!versions.isEmpty()) {
+                // CA-6.12 : la version envoyée se reconnaît sans ambiguïté ; à défaut, la dernière validée.
+                int numeroVersion = c.versionEnvoyee().orElse(versions.size());
+                VersionValidee v = versions.get(numeroVersion - 1);
+                Path repertoire = Path.of(v.repertoire());
+                out.println("Dossier : version " + v.version() + " validée le " + Dossiers.date(v.valideLe(), racine().horloge().getZone())
+                        + (c.versionEnvoyee().isPresent() ? ", envoyée" : "") + ". Pour la relire : postulat dossier voir " + n.numero()
+                        + " --version " + v.version());
+                out.println(Files.isDirectory(repertoire) ? "  Fichiers : " + repertoire
+                        : "  Fichiers introuvables : " + repertoire + " a été déplacé ou supprimé ; le contenu reste lisible (UC-12 E1).");
+            } else {
+                out.println(dossier.map(d -> "Dossier : généré le "
+                                + Affichage.date(LocalDate.ofInstant(d.genereLe(), racine().horloge().getZone())) + ", note globale "
+                                + d.dossier().evaluation().noteGlobale() + "/100, non validé. Pour le relire : postulat dossier voir "
+                                + n.numero())
+                        .orElse("Dossier : aucun dossier rattaché."));
+            }
             // EN-5 : le coût par candidature s'affiche.
             out.println("Modèle de langage : " + (cout.appels() == 0 ? "aucun appel"
                     : Affichage.appels(cout.appels()) + ", " + Affichage.dollars(cout.coutMicroDollars())));

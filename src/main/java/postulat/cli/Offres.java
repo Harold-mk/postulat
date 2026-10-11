@@ -214,6 +214,10 @@ final class Offres {
             try (Base base = ouvrirBase()) {
                 Numerotee n = trouver(base);
                 UUID id = n.candidature().id();
+                if (base.aUnDossierValide(id)) {
+                    throw new Refus("Un dossier de la candidature n° " + numero + " a été validé : son offre, son analyse et son "
+                            + "rapprochement sont figés avec lui (CA-6.8). Rien n'a été refait.");
+                }
                 Offre offre = base.offre(id).orElseThrow(() -> new Refus("La candidature n° " + numero
                         + " a été saisie sans offre : il n'y a rien à analyser."));
                 OffreAnalysee analyse;

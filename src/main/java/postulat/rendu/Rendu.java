@@ -93,6 +93,29 @@ public final class Rendu {
                 + "à raccourcir (CA-4.4), pas à tronquer.");
     }
 
+    /**
+     * Le CV au format Word, avec le gabarit du PDF : le premier, du plus aéré au plus serré, où il tient.
+     * Comme {@link #cvTelQuel}, rien n'en est retiré ; un CV qui déborde est refusé.
+     */
+    public static byte[] cvDocx(Cv cv) {
+        for (Gabarit g : Gabarit.DU_PLUS_AERE_AU_PLUS_SERRE) {
+            if (composer(cv, g).tient()) {
+                return Docx.cv(cv, g);
+            }
+        }
+        throw new ErreurRendu("Le CV dépasse une page même au plus serré : il n'a pas été écrit en DOCX.");
+    }
+
+    /** La lettre au format Word, avec le gabarit de son PDF. */
+    public static byte[] lettreDocx(Lettre lettre) {
+        for (Gabarit g : Gabarit.DU_PLUS_AERE_AU_PLUS_SERRE) {
+            if (composer(lettre, g).tient()) {
+                return Docx.lettre(lettre, g);
+            }
+        }
+        throw new ErreurRendu("La lettre dépasse une page même au plus serré : elle n'a pas été écrite en DOCX.");
+    }
+
     /** Le texte d'un PDF, tel qu'un filtre ATS l'extrait. */
     public static String texte(byte[] pdf) {
         try (PDDocument document = Loader.loadPDF(pdf)) {

@@ -4,8 +4,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import picocli.CommandLine.Command;
@@ -17,18 +21,24 @@ import postulat.production.Ats;
 import postulat.production.Dossier;
 import postulat.production.Evaluation;
 import postulat.production.Exigence;
+import postulat.production.Instantane;
 import postulat.production.NoteAts;
 import postulat.production.OffreAnalysee;
+import postulat.production.Profil;
 import postulat.production.ReglesGeneration;
+import postulat.production.Tracabilite;
+import postulat.production.Violation;
 import postulat.rendu.ErreurRendu;
 import postulat.rendu.Rendu;
 import postulat.stockage.Base;
 import postulat.stockage.CoutModele;
 import postulat.stockage.DossierGenere;
+import postulat.stockage.ErreurStockage;
 import postulat.stockage.LectureProfil;
 import postulat.stockage.Numerotee;
 import postulat.stockage.Offre;
 import postulat.stockage.Reglages;
+import postulat.stockage.VersionValidee;
 import postulat.suivi.Candidature;
 import postulat.suivi.Etape;
 
@@ -42,8 +52,9 @@ final class Dossiers {
     private Dossiers() {}
 
     @Command(name = "dossier", description = "Le dossier d'une candidature : CV ciblé et lettre, vérifiés, évalués, corrigés "
-            + "(UC-07, UC-08).",
-            subcommands = {Generer.class, Voir.class, Modifier.class, Supprimer.class, Reintroduire.class, Evaluer.class})
+            + "et validés (UC-07 à UC-09).",
+            subcommands = {Generer.class, Voir.class, Modifier.class, Supprimer.class, Reintroduire.class, Evaluer.class,
+                Valider.class})
     static final class CommandeDossier extends Commande {
 
         @Override
@@ -65,9 +76,9 @@ final class Dossiers {
             try (Base base = ouvrirBase()) {
                 Numerotee n = trouver(base);
                 Candidature c = n.candidature();
-                if (c.etape() != Etape.A_PREPARER) {
+                if (c.etape() != Etape.A_PREPARER && c.etape() != Etape.PRETE) {
                     throw new Refus("La candidature n° " + numero + " est à l'étape " + Affichage.etape(c.etape()) + " : un dossier "
-                            + "se génère à l'étape « à_préparer »." + (c.etape() == Etape.REPEREE
+                            + "se génère à l'étape « à_préparer », ou « prête » pour une nouvelle version." + (c.etape() == Etape.REPEREE
                                     ? " Pour poursuivre cette offre : postulat avancer " + numero + " à_préparer" : ""));
                 }
                 GenerationDossier.Cible cible = cible(base, n);
@@ -93,7 +104,8 @@ final class Dossiers {
                     out.println("Coût engagé malgré l'échec : " + cout(avant, base.coutModele(c.id())) + ".");
                     throw e;
                 }
-                base.enregistrerDossier(c.id(), DossierGenere.nouveau(dossier, racine().horloge().instant(), lecture.empreinte()));
+                base.enregistrerDossier(c.id(), DossierGenere.nouveau(dossier, racine().horloge().instant(), lecture.empreinte(),
+                        reglages.modeleCapable()));
                 out.println();
                 Affichage.dossier(out, dossier, false);
                 out.println();
@@ -111,15 +123,30 @@ final class Dossiers {
         @Option(names = "--apercus", description = "Réécrire aussi les PDF d'aperçu, sans rien régénérer.")
         boolean reecrire;
 
+        @Option(names = "--version", paramLabel = "V", description = "Relire la version validée V, telle qu'elle a été figée : "
+                + "l'offre, chaque phrase et le contenu des faits qui la justifient (CA-6.10).")
+        Integer version;
+
         @Override
         public Integer call() throws IOException {
             Numerotee n;
             DossierGenere d;
+            List<VersionValidee> versions;
+            Optional<Offre> offre;
             try (Base base = ouvrirBase()) {
                 n = trouver(base);
-                d = courant(base, n);
+                versions = base.versionsValidees(n.candidature().id());
+                offre = base.offre(n.candidature().id());
+                d = version == null ? courant(base, n) : null;
             }
             PrintWriter out = sortie();
+            if (version != null) {
+                VersionValidee v = versions.stream().filter(x -> x.version() == version).findFirst()
+                        .orElseThrow(() -> new Refus(versions.isEmpty() ? "La candidature n° " + numero + " n'a aucune version validée."
+                                : "Pas de version " + version + " : les versions validées vont de 1 à " + versions.size() + "."));
+                versionValidee(out, n, v, offre, racine().horloge().getZone());
+                return 0;
+            }
             out.println("Dossier de " + Affichage.titre(n.numero(), n.candidature()) + ", généré le "
                     + Affichage.date(LocalDate.ofInstant(d.genereLe(), racine().horloge().getZone()))
                     + d.corrigeLe().map(le -> ", corrigé le " + Affichage.date(LocalDate.ofInstant(le, racine().horloge().getZone())))
@@ -128,6 +155,18 @@ final class Dossiers {
             if (Files.exists(profil) && !racine().donnees().lireProfil(profil).empreinte().equals(d.empreinteProfil())) {
                 out.println("Le profil a changé depuis : ce dossier n'en tient pas compte. Pour régénérer : postulat dossier generer "
                         + numero);
+            }
+            if (!versions.isEmpty()) {
+                VersionValidee derniere = versions.get(versions.size() - 1);
+                out.println("Versions validées : " + versions.stream()
+                        .map(v -> v.version() + " le " + date(v.valideLe(), racine().horloge().getZone())
+                                + (n.candidature().versionEnvoyee().equals(Optional.of(v.version())) ? ", envoyée" : ""))
+                        .collect(java.util.stream.Collectors.joining(" · ")) + ". Pour en relire une : postulat dossier voir " + numero
+                        + " --version V");
+                out.println(derniere.dossier().dossier().equals(d.dossier())
+                        ? "Ce brouillon est la version " + derniere.version() + ", validée telle quelle."
+                        : "Ce brouillon diffère de la version " + derniere.version() + " : pour le valider à son tour, postulat "
+                                + "dossier valider " + numero);
             }
             out.println();
             Affichage.dossier(out, d.dossier(), d.avisPerime());
@@ -144,6 +183,33 @@ final class Dossiers {
             }
             return 0;
         }
+    }
+
+    /** Une version validée telle qu'elle a été figée : l'offre, le dossier, et ce qui justifie chaque phrase (CA-6.10). */
+    private static void versionValidee(PrintWriter out, Numerotee n, VersionValidee v, Optional<Offre> offre, ZoneId zone) {
+        boolean envoyee = n.candidature().versionEnvoyee().equals(Optional.of(v.version()));
+        out.println("Version " + v.version() + " du dossier de " + Affichage.titre(n.numero(), n.candidature()) + ", validée le "
+                + date(v.valideLe(), zone) + (envoyee ? ", c'est celle qui a été envoyée." : "."));
+        Path repertoire = Path.of(v.repertoire());
+        out.println(Files.isDirectory(repertoire) ? "Répertoire : " + repertoire
+                : "Répertoire introuvable : " + repertoire + ". Il a été déplacé ou supprimé hors de l'application ; le contenu "
+                        + "ci-dessous reste complet (UC-12 E1).");
+        out.println("Produite le " + date(v.dossier().genereLe(), zone) + (v.dossier().modele().isEmpty() ? "" : " par " + v.dossier().modele())
+                + ", profil " + v.dossier().empreinteProfil().substring(0, Math.min(12, v.dossier().empreinteProfil().length())) + "…");
+        out.println();
+        offre.ifPresent(o -> {
+            Affichage.offre(out, o, zone, n.numero());
+            out.println();
+        });
+        Affichage.dossier(out, v.dossier().dossier(), v.dossier().avisPerime());
+        out.println();
+        out.println("Justification : les faits cités, tels qu'ils étaient à la validation (RG-16)");
+        v.faits().forEach(f -> out.println("  [" + f.fait() + "] " + java.util.Arrays.stream(f.contenu().split("\n"))
+                .filter(x -> !x.isBlank()).collect(java.util.stream.Collectors.joining(" · "))));
+    }
+
+    static String date(Instant instant, ZoneId zone) {
+        return Affichage.date(LocalDate.ofInstant(instant, zone));
     }
 
     /**
@@ -298,6 +364,128 @@ final class Dossiers {
                 out.println("Coût de l'avis : " + cout(avant, base.coutModele(id)) + ".");
             }
             return 0;
+        }
+    }
+
+    @Command(name = "valider", description = "Valide le dossier : le fige, copie le contenu des faits qu'il cite, écrit le CV "
+            + "et la lettre en PDF et en DOCX dans le répertoire de la candidature, et la fait passer à l'étape « prête ». "
+            + "Aucun appel au modèle.")
+    static final class Valider extends Commande.SurCandidature {
+
+        @Override
+        public Integer call() {
+            PrintWriter out = sortie();
+            try (Base base = ouvrirBase()) {
+                Numerotee n = trouver(base);
+                Candidature c = n.candidature();
+                DossierGenere g = courant(base, n);
+                List<VersionValidee> versions = base.versionsValidees(c.id());
+                if (!versions.isEmpty() && versions.get(versions.size() - 1).dossier().dossier().equals(g.dossier())) {
+                    throw new Refus("Ce dossier est déjà validé, en version " + versions.size() + " : rien n'a changé depuis.");
+                }
+                int version = versions.size() + 1;
+                Candidature validee = c.valider(version, aujourdhui(), aujourdhui());
+                GenerationDossier.Cible cible = cible(base, n);
+                LectureProfil lecture = profilUtilisable();
+                Profil profil = lecture.profil().orElseThrow();
+                Dossier d = g.dossier();
+
+                // E2 : ce qui se fige doit encore tenir face au profil, dont les faits vont être copiés.
+                List<Violation> violations = Tracabilite.verifier(d.assertions(), profil, cible.lacunes(), cible.texteBrut());
+                if (!violations.isEmpty()) {
+                    throw new Refus("Validation refusée, rien n'a été enregistré (UC-09 E2) : le profil a changé depuis la génération, "
+                            + "et ces phrases n'y retrouvent plus ce qui les justifiait :" + System.lineSeparator() + violations.stream()
+                                    .map(x -> "  - n° " + (x.assertion() + 1) + " « " + d.assertions().get(x.assertion()).texte() + " » — "
+                                            + x.regle() + " : " + x.message())
+                                    .collect(java.util.stream.Collectors.joining(System.lineSeparator()))
+                            + System.lineSeparator() + "Régénérez le dossier, ou réécrivez ces phrases à la main.");
+                }
+                List<Instantane> faits = Instantane.des(d, profil);
+
+                String nom = d.cv().entete().nom();
+                Map<String, byte[]> fichiers = new LinkedHashMap<>();
+                try {
+                    fichiers.put(nomDeFichier("CV " + nom) + ".pdf", Rendu.cvTelQuel(d.cv()).pdf());
+                    fichiers.put(nomDeFichier("CV " + nom) + ".docx", Rendu.cvDocx(d.cv()));
+                    fichiers.put(nomDeFichier("Lettre " + nom) + ".pdf", Rendu.lettre(d.lettre()).pdf());
+                    fichiers.put(nomDeFichier("Lettre " + nom) + ".docx", Rendu.lettreDocx(d.lettre()));
+                } catch (ErreurRendu e) {
+                    throw new Refus("Validation refusée, rien n'a été enregistré : " + e.getMessage());
+                }
+                Path repertoire = ecrireRepertoire(n, version, fichiers);
+                try {
+                    base.validerDossier(validee, new VersionValidee(version, g, racine().horloge().instant(), repertoire.toString(), faits));
+                } catch (RuntimeException e) {
+                    effacer(repertoire);
+                    throw e;
+                }
+
+                out.println("Dossier de " + Affichage.titre(n.numero(), c) + " validé : version " + version + ", figée (RG-15)."
+                        + (version > 1 ? " La version " + (version - 1) + " reste conservée." : ""));
+                if (c.etape() != Etape.PRETE) {
+                    out.println("Candidature passée à l'étape « prête ». Après l'envoi, fait par vous : postulat avancer " + numero
+                            + " envoyée");
+                }
+                out.println("Répertoire : " + repertoire);
+                out.println("  " + String.join(" · ", fichiers.keySet()));
+                out.println("Instantanés : " + faits.size() + " fait(s) cité(s), copiés tels qu'ils sont dans le profil : le modifier "
+                        + "ne changera plus ce dossier (RG-16).");
+                if (!lecture.empreinte().equals(g.empreinteProfil())) {
+                    out.println("Attention : le profil a changé depuis la génération. Les phrases restent vérifiées contre sa version "
+                            + "actuelle, dont les faits cités viennent d'être copiés.");
+                }
+            }
+            return 0;
+        }
+
+        /**
+         * Écrit les fichiers dans un répertoire provisoire, puis le renomme : on ne trouve jamais un
+         * répertoire de candidature à moitié écrit. Si l'écriture échoue, rien ne reste (UC-09 E1).
+         */
+        private Path ecrireRepertoire(Numerotee n, int version, Map<String, byte[]> fichiers) {
+            Path candidature = racine().donnees().repertoire().resolve("candidatures")
+                    .resolve(nomDeFichier(n.numero() + " " + n.candidature().entreprise() + " — " + n.candidature().poste()));
+            Path cible = candidature.resolve("version " + version);
+            Path provisoire = candidature.resolve("version " + version + ".provisoire");
+            if (Files.exists(cible)) {
+                throw new Refus("Le répertoire " + cible + " existe déjà : déplacez-le, puis validez de nouveau. Rien n'a été enregistré.");
+            }
+            try {
+                Files.createDirectories(provisoire);
+                for (Map.Entry<String, byte[]> f : fichiers.entrySet()) {
+                    Files.write(provisoire.resolve(f.getKey()), f.getValue());
+                }
+                Files.move(provisoire, cible);
+                return cible;
+            } catch (IOException e) {
+                effacer(provisoire);
+                throw new ErreurStockage("La validation a échoué entièrement, rien n'a été enregistré : ni dossier figé, ni changement "
+                        + "d'étape (UC-09 E1). Le répertoire " + candidature + " n'a pas pu être écrit : " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Un nom que Windows accepte : sans les caractères qu'il interdit, sans espace ni point final, et
+     * assez court pour ne pas buter sur la longueur des chemins.
+     */
+    static String nomDeFichier(String nom) {
+        String propre = nom.replaceAll("[<>:\"/\\\\|?*\\p{Cntrl}]", " ").replaceAll("\\s+", " ").strip();
+        if (propre.length() > 80) {
+            propre = propre.substring(0, 80).strip();
+        }
+        propre = propre.replaceAll("[. ]+$", "");
+        return propre.isEmpty() ? "candidature" : propre;
+    }
+
+    /** Retire un répertoire que la validation vient d'écrire, et lui seul ; un échec ici ne masque pas l'erreur d'origine. */
+    private static void effacer(Path repertoire) {
+        try (java.util.stream.Stream<Path> chemins = Files.walk(repertoire)) {
+            for (Path p : chemins.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        } catch (IOException | java.io.UncheckedIOException ignoree) {
+            // l'erreur d'origine dit déjà l'essentiel
         }
     }
 

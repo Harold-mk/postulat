@@ -881,7 +881,8 @@ class PostulatTest {
             Resultat sansOffre = postulat("dossier", "generer", "2");
 
             assertThat(reperee.code()).isEqualTo(Postulat.REFUSE);
-            assertThat(reperee.erreurs()).contains("est à l'étape « repérée » : un dossier se génère à l'étape « à_préparer ».")
+            assertThat(reperee.erreurs()).contains("est à l'étape « repérée » : un dossier se génère à l'étape « à_préparer », ou "
+                    + "« prête » pour une nouvelle version.")
                     .contains("postulat avancer 3 à_préparer");
             assertThat(sansOffre.code()).isEqualTo(Postulat.REFUSE);
             assertThat(sansOffre.erreurs()).contains("saisie sans offre");
@@ -1042,6 +1043,147 @@ class PostulatTest {
             assertThat(faux.demandes().get(5).contenu()).contains("- A1 (section « Expériences », bloc « Stagiaire data analyst — "
                     + "Acme ») : « Suivi hebdomadaire des ventes sous Power BI »");
             assertThat(reussi("dossier", "voir", "1").sortie()).doesNotContain("corrigé le").doesNotContain("avis antérieur");
+        }
+
+        // --- UC-09 : valider ---
+
+        Path versionValidee(int version) {
+            return dossier.resolve("candidatures").resolve("1 Acme — Stagiaire data analyst").resolve("version " + version);
+        }
+
+        @Test
+        void valider_fige_le_dossier_ecrit_ses_fichiers_et_fait_passer_a_prete() throws IOException {
+            dossierGenere(CV);
+
+            Resultat r = reussi("dossier", "valider", "1");
+
+            assertThat(r.sortie())
+                    .contains("Dossier de #1 Acme — Stagiaire data analyst validé : version 1, figée (RG-15).")
+                    .contains("Candidature passée à l'étape « prête ». Après l'envoi, fait par vous : postulat avancer 1 envoyée")
+                    .contains("Répertoire : " + versionValidee(1))
+                    .contains("CV Camille Martin.pdf · CV Camille Martin.docx · Lettre Camille Martin.pdf · Lettre Camille Martin.docx")
+                    .contains("Instantanés : 5 fait(s) cité(s), copiés tels qu'ils sont dans le profil")
+                    .doesNotContain("Attention");
+            assertThat(postulat.rendu.Rendu.pages(Files.readAllBytes(versionValidee(1).resolve("CV Camille Martin.pdf")))).isEqualTo(1);
+            assertThat(Files.readAllBytes(versionValidee(1).resolve("Lettre Camille Martin.docx"))).startsWith('P', 'K');
+            assertThat(faux.demandes()).hasSize(5);
+            assertThat(reussi("voir", "1").sortie()).contains("Étape : prête")
+                    .contains("Dossier : version 1 validée le 10/10/2026. Pour la relire : postulat dossier voir 1 --version 1")
+                    .contains("  Fichiers : " + versionValidee(1))
+                    .contains("dossier validé, version 1");
+            assertThat(reussi("dossier", "voir", "1").sortie()).contains("Versions validées : 1 le 10/10/2026.")
+                    .contains("Ce brouillon est la version 1, validée telle quelle.");
+            assertThat(postulat("dossier", "valider", "1").erreurs()).contains("déjà validé, en version 1 : rien n'a changé depuis.");
+            Resultat reanalyse = postulat("offre", "analyser", "1");
+            assertThat(reanalyse.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(reanalyse.erreurs()).contains("son offre, son analyse et son rapprochement sont figés avec lui");
+        }
+
+        @Test
+        void une_nouvelle_version_se_genere_et_se_valide_a_prete_et_l_envoyee_se_reconnait() throws IOException {
+            dossierGenere(CV);
+            reussi("dossier", "valider", "1");
+            faux.repondre(CV).repondre(LETTRE).repondre(avis(5));
+            reussi("dossier", "generer", "1");
+            reussi("dossier", "modifier", "1", "3", "Suivi hebdomadaire des ventes sous Power BI");
+            assertThat(reussi("dossier", "voir", "1").sortie()).contains("Ce brouillon diffère de la version 1 : pour le valider à son "
+                    + "tour, postulat dossier valider 1");
+
+            Resultat r = reussi("dossier", "valider", "1");
+
+            assertThat(r.sortie()).contains("validé : version 2, figée (RG-15). La version 1 reste conservée.")
+                    .doesNotContain("Candidature passée");
+            assertThat(versionValidee(1)).isDirectory();
+            assertThat(versionValidee(2)).isDirectory();
+            reussi("avancer", "1", "envoyée");
+            assertThat(reussi("voir", "1").sortie()).contains("Dossier : version 2 validée le 10/10/2026, envoyée.");
+            assertThat(reussi("dossier", "voir", "1", "--version", "2").sortie()).contains("c'est celle qui a été envoyée.")
+                    .contains("[de votre main]");
+            assertThat(reussi("dossier", "voir", "1", "--version", "1").sortie()).doesNotContain("envoyée").doesNotContain("[de votre main]");
+            assertThat(postulat("dossier", "valider", "1").erreurs()).contains("déjà validé");
+        }
+
+        /** EN-4 : modifier le profil, puis le brouillon ; la version validée n'a pas bougé, instantanés compris. */
+        @Test
+        void rien_de_ce_qui_suit_ne_touche_une_version_validee() throws IOException {
+            dossierGenere(CV);
+            reussi("dossier", "valider", "1");
+            String avant = reussi("dossier", "voir", "1", "--version", "1").sortie();
+
+            Files.writeString(dossier.resolve("profil.yaml"),
+                    LeProfil.VALIDE.replace("tache: Tableau de bord Power BI", "tache: Tableaux de bord pour la direction"));
+            reussi("dossier", "modifier", "1", "3", "Suivi des ventes hebdomadaires");
+
+            assertThat(reussi("dossier", "voir", "1", "--version", "1").sortie()).isEqualTo(avant);
+            assertThat(avant).contains("Version 1 du dossier de #1 Acme — Stagiaire data analyst, validée le 10/10/2026.")
+                    .contains("Produite le 10/10/2026 par claude-opus-5-5, profil ")
+                    .contains("couverte [O] SQL")
+                    .contains("   3    • Suivi des ventes sous Power BI [exp-acme-r1] (pertinence 1)")
+                    .contains("Justification : les faits cités, tels qu'ils étaient à la validation (RG-16)")
+                    .contains("  [exp-acme-r1] Suivre les ventes · Tableau de bord Power BI");
+        }
+
+        /** UC-09 E2 : ce qui se fige doit encore tenir face au profil dont on copie les faits. */
+        @Test
+        void un_profil_qui_ne_justifie_plus_le_dossier_empeche_de_le_valider() throws IOException {
+            dossierGenere(CV);
+            Files.writeString(dossier.resolve("profil.yaml"), LeProfil.VALIDE.lines()
+                    .filter(l -> !l.contains("exp-acme-r2")).collect(java.util.stream.Collectors.joining("\n")));
+
+            Resultat r = postulat("dossier", "valider", "1");
+
+            assertThat(r.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(r.erreurs()).contains("Validation refusée, rien n'a été enregistré (UC-09 E2)")
+                    .contains("n° 4 « Mis en place des contrôles SQL quotidiens » — RG-01").contains("Régénérez le dossier");
+            assertThat(dossier.resolve("candidatures")).doesNotExist();
+            assertThat(reussi("voir", "1").sortie()).contains("Étape : à_préparer").doesNotContain("dossier validé");
+        }
+
+        /** UC-09 E1 : un répertoire impossible à écrire fait tout échouer, sans rien laisser. */
+        @Test
+        void si_le_repertoire_ne_peut_pas_etre_ecrit_rien_n_est_enregistre() throws IOException {
+            dossierGenere(CV);
+            Files.writeString(dossier.resolve("candidatures"), "un fichier, là où il faudrait un répertoire");
+
+            Resultat r = postulat("dossier", "valider", "1");
+
+            assertThat(r.code()).isEqualTo(Postulat.ERREUR);
+            assertThat(r.erreurs()).contains("La validation a échoué entièrement, rien n'a été enregistré : ni dossier figé, ni "
+                    + "changement d'étape (UC-09 E1).");
+            assertThat(reussi("voir", "1").sortie()).contains("Étape : à_préparer").doesNotContain("dossier validé");
+            assertThat(reussi("dossier", "voir", "1").sortie()).doesNotContain("Versions validées");
+        }
+
+        /** UC-12 E1 : des fichiers déplacés hors de l'application ; le contenu, lui, reste. */
+        @Test
+        void un_repertoire_deplace_se_signale_et_le_contenu_reste_lisible() throws IOException {
+            dossierGenere(CV);
+            reussi("dossier", "valider", "1");
+            Files.move(versionValidee(1), versionValidee(1).resolveSibling("envoyée à Acme"));
+
+            assertThat(reussi("voir", "1").sortie()).contains("  Fichiers introuvables : " + versionValidee(1))
+                    .contains("le contenu reste lisible (UC-12 E1)");
+            assertThat(reussi("dossier", "voir", "1", "--version", "1").sortie()).contains("Répertoire introuvable : " + versionValidee(1))
+                    .contains("   3    • Suivi des ventes sous Power BI");
+        }
+
+        @Test
+        void on_ne_relit_que_les_versions_qui_existent_et_on_ne_valide_qu_un_dossier_genere() throws IOException {
+            candidaturePrete();
+            assertThat(postulat("dossier", "valider", "1").erreurs()).contains("n'a pas encore de dossier");
+            faux.repondre(CV).repondre(LETTRE).repondre(avis(5));
+            reussi("dossier", "generer", "1");
+            assertThat(postulat("dossier", "voir", "1", "--version", "1").erreurs()).contains("n'a aucune version validée");
+            reussi("dossier", "valider", "1");
+            assertThat(postulat("dossier", "voir", "1", "--version", "3").erreurs()).contains("Pas de version 3 : les versions validées "
+                    + "vont de 1 à 1.");
+        }
+
+        @Test
+        void un_nom_de_repertoire_se_plie_a_ce_que_windows_accepte() {
+            assertThat(Dossiers.nomDeFichier("1 A<b>c:d/e\\f|g?h*i. ")).isEqualTo("1 A b c d e f g h i");
+            assertThat(Dossiers.nomDeFichier(" ... ")).isEqualTo("candidature");
+            assertThat(Dossiers.nomDeFichier("x".repeat(100))).hasSize(80);
         }
     }
 

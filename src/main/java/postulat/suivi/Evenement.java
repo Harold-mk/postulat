@@ -101,6 +101,20 @@ public sealed interface Evenement {
         }
     }
 
+    /**
+     * Une version du dossier est validée, donc figée (UC-09, RG-15). Elle ne change pas l'étape : c'est
+     * le changement d'étape qui l'accompagne, la première fois, qui fait entrer la candidature à « prête ».
+     * Rejoué, le journal dit ainsi sans ambiguïté quelle version a été envoyée (CA-6.12).
+     */
+    record DossierValide(LocalDate date, int version) implements Evenement {
+        public DossierValide {
+            Objects.requireNonNull(date);
+            if (version < 1) {
+                throw new IllegalArgumentException("Les versions validées se numérotent à partir de 1 : " + version);
+            }
+        }
+    }
+
     /** Note libre. Seule saisie permise, avec la réouverture, sur une étape terminale (CA-6.5). */
     record Note(LocalDate date, String texte) implements Evenement {
         public Note {

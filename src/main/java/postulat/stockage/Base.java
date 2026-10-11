@@ -178,14 +178,14 @@ public final class Base implements AutoCloseable {
      */
     public void enregistrerDossier(UUID candidature, DossierGenere dossier) {
         transaction(() -> {
-            new TablesDossier(connexion, candidature).ecrire(dossier);
+            new TablesDossier(connexion, candidature, TablesDossier.BROUILLON).ecrireBrouillon(dossier);
             return null;
         });
     }
 
-    /** Le dossier courant d'une candidature, s'il en a un. */
+    /** Le brouillon du dossier d'une candidature, s'il en a un : le dernier généré, corrigé ou non. */
     public Optional<DossierGenere> dossier(UUID candidature) {
-        return lecture(() -> new TablesDossier(connexion, candidature).lire());
+        return lecture(() -> new TablesDossier(connexion, candidature, TablesDossier.BROUILLON).lireBrouillon());
     }
 
     /** La candidature dont l'offre a exactement ce texte : la même offre collée deux fois (RG-18). */
@@ -209,23 +209,76 @@ public final class Base implements AutoCloseable {
      */
     public void enregistrer(Candidature c) {
         transaction(() -> {
-            List<Evenement> enregistres = journal(c.id());
-            if (enregistres.isEmpty()) {
-                throw new ErreurStockage("Candidature inconnue de la base : " + c.id() + ".");
-            }
-            if (c.journal().size() < enregistres.size()
-                    || !c.journal().subList(0, enregistres.size()).equals(enregistres)) {
-                throw new ErreurStockage("La candidature a changé dans la base depuis sa lecture, ou son "
-                        + "historique a été réécrit : rien n'a été enregistré. Recommencez l'opération.");
-            }
-            insererEvenements(c, enregistres.size());
-            try (PreparedStatement s = connexion.prepareStatement("UPDATE candidature SET etape = ? WHERE id = ?")) {
-                s.setString(1, c.etape().name());
-                s.setString(2, c.id().toString());
-                s.executeUpdate();
-            }
+            enregistrerJournal(c);
             return null;
         });
+    }
+
+    /**
+     * Fige une version du dossier et l'inscrit au journal, d'un seul tenant (UC-09 E1) : jamais de version
+     * validée sans l'événement qui la date, ni d'étape « prête » sans dossier figé.
+     *
+     * @param validee la candidature dont le journal porte la validation
+     */
+    public void validerDossier(Candidature validee, VersionValidee version) {
+        transaction(() -> {
+            new TablesDossier(connexion, validee.id(), version.version()).ecrireVersion(version);
+            enregistrerJournal(validee);
+            return null;
+        });
+    }
+
+    /** Les versions validées du dossier d'une candidature, de la première à la dernière. */
+    public List<VersionValidee> versionsValidees(UUID candidature) {
+        return lecture(() -> {
+            List<Integer> numeros = new ArrayList<>();
+            try (PreparedStatement s = connexion.prepareStatement(
+                    "SELECT version FROM dossier WHERE candidature_id = ? AND version > 0 ORDER BY version")) {
+                s.setString(1, candidature.toString());
+                try (ResultSet r = s.executeQuery()) {
+                    while (r.next()) {
+                        numeros.add(r.getInt(1));
+                    }
+                }
+            }
+            List<VersionValidee> versions = new ArrayList<>();
+            for (int v : numeros) {
+                versions.add(new TablesDossier(connexion, candidature, v).lireVersion().orElseThrow());
+            }
+            return versions;
+        });
+    }
+
+    /** Vrai si la candidature a au moins une version validée : son offre est alors figée avec elle. */
+    public boolean aUnDossierValide(UUID candidature) {
+        return lecture(() -> {
+            try (PreparedStatement s = connexion.prepareStatement(
+                    "SELECT count(*) FROM dossier WHERE candidature_id = ? AND version > 0")) {
+                s.setString(1, candidature.toString());
+                try (ResultSet r = s.executeQuery()) {
+                    return r.next() && r.getInt(1) > 0;
+                }
+            }
+        });
+    }
+
+    /** Ajoute au journal les événements nouveaux, et met l'étape dénormalisée à jour (RG-10). */
+    private void enregistrerJournal(Candidature c) throws SQLException {
+        List<Evenement> enregistres = journal(c.id());
+        if (enregistres.isEmpty()) {
+            throw new ErreurStockage("Candidature inconnue de la base : " + c.id() + ".");
+        }
+        if (c.journal().size() < enregistres.size()
+                || !c.journal().subList(0, enregistres.size()).equals(enregistres)) {
+            throw new ErreurStockage("La candidature a changé dans la base depuis sa lecture, ou son "
+                    + "historique a été réécrit : rien n'a été enregistré. Recommencez l'opération.");
+        }
+        insererEvenements(c, enregistres.size());
+        try (PreparedStatement s = connexion.prepareStatement("UPDATE candidature SET etape = ? WHERE id = ?")) {
+            s.setString(1, c.etape().name());
+            s.setString(2, c.id().toString());
+            s.executeUpdate();
+        }
     }
 
     public Optional<Numerotee> trouver(long numero) {
@@ -389,6 +442,7 @@ public final class Base implements AutoCloseable {
     private static final String INTERACTION = "INTERACTION";
     private static final String RETOUR_PROMIS = "RETOUR_PROMIS";
     private static final String NOTE = "NOTE";
+    private static final String DOSSIER_VALIDE = "DOSSIER_VALIDE";
 
     /** Une ligne de la table {@code evenement}, colonnes sans objet à {@code null}. */
     private record Ligne(
@@ -413,6 +467,7 @@ public final class Base implements AutoCloseable {
             case Evenement.Interaction x -> new Ligne(INTERACTION, x.date(), null, null, x.canal(), null, x.notes());
             case Evenement.RetourPromis x -> new Ligne(RETOUR_PROMIS, x.date(), null, null, null, x.pour(), null);
             case Evenement.Note x -> new Ligne(NOTE, x.date(), null, null, null, null, x.texte());
+            case Evenement.DossierValide x -> new Ligne(DOSSIER_VALIDE, x.date(), null, null, null, null, String.valueOf(x.version()));
         };
     }
 
@@ -431,6 +486,7 @@ public final class Base implements AutoCloseable {
             case INTERACTION -> new Evenement.Interaction(date, Canal.valueOf(r.getString("canal")), r.getString("texte"));
             case RETOUR_PROMIS -> new Evenement.RetourPromis(date, LocalDate.parse(r.getString("prevu_le")));
             case NOTE -> new Evenement.Note(date, r.getString("texte"));
+            case DOSSIER_VALIDE -> new Evenement.DossierValide(date, Integer.parseInt(r.getString("texte")));
             default -> throw new ErreurStockage("Type d'événement inconnu dans la base : " + type + ".");
         };
     }

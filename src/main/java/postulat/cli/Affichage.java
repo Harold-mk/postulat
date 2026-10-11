@@ -263,6 +263,7 @@ final class Affichage {
             case Evenement.Interaction i -> canal(i.canal()) + (i.notes().isEmpty() ? "" : " : " + i.notes());
             case Evenement.RetourPromis rp -> "retour promis pour le " + date(rp.pour());
             case Evenement.Note n -> "note : " + n.texte();
+            case Evenement.DossierValide d -> "dossier validé, version " + d.version();
         };
     }
 

@@ -60,6 +60,7 @@ public record Candidature(UUID id, String entreprise, String poste, List<Eveneme
                 case Evenement.Interaction i -> courante;
                 case Evenement.RetourPromis rp -> courante;
                 case Evenement.Note n -> courante;
+                case Evenement.DossierValide d -> courante;
             };
         }
         return courante;
@@ -101,6 +102,37 @@ public record Candidature(UUID id, String entreprise, String poste, List<Eveneme
             throw new RefusMetier("Une réouverture mène à une étape ouverte, pas à « " + vers + " ».");
         }
         return ajouter(new Evenement.Reouverture(date, vers), aujourdhui);
+    }
+
+    /**
+     * Enregistre la validation d'une version du dossier (UC-09). La première fait entrer la candidature
+     * dans le suivi à l'étape « prête », jamais « envoyée » (RG-12, CA-6.14) ; une version suivante se
+     * valide à l'étape « prête », sans en changer (RG-15).
+     */
+    public Candidature valider(int version, LocalDate date, LocalDate aujourdhui) {
+        Etape actuelle = etape();
+        if (actuelle != Etape.A_PREPARER && actuelle != Etape.PRETE) {
+            throw new RefusMetier("Un dossier se valide à l'étape « à_préparer » ou « prête » ; cette candidature est à "
+                    + "l'étape « " + actuelle + " ».");
+        }
+        Candidature prete = actuelle == Etape.A_PREPARER ? avancer(Etape.PRETE, date, aujourdhui) : this;
+        return prete.ajouter(new Evenement.DossierValide(date, version), aujourdhui);
+    }
+
+    /**
+     * La version du dossier qui a été envoyée : la dernière validée avant le premier passage à
+     * « envoyée » (CA-6.12). Vide si la candidature n'a pas été envoyée, ou l'a été sans dossier validé.
+     */
+    public Optional<Integer> versionEnvoyee() {
+        Integer derniere = null;
+        for (Evenement e : journal) {
+            if (e instanceof Evenement.DossierValide d) {
+                derniere = d.version();
+            } else if (e instanceof Evenement.ChangementEtape c && c.vers() == Etape.ENVOYEE) {
+                return Optional.ofNullable(derniere);
+            }
+        }
+        return Optional.empty();
     }
 
     /** Enregistre une relance faite par le candidat (CA-7.9). */

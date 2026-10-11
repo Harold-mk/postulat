@@ -20,7 +20,7 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 7 | Rendu PDF sur une page, compaction puis retrait des phrases les moins pertinentes, relecture du texte (RG-05, RG-26) | ✅ |
 | 8a | CV ciblé, lettre, évaluation par filtre ATS et recruteur simulé, révision bornée (UC-07) | ✅ |
 | 8b | Correction manuelle du dossier, régénération qui garde les phrases de l'auteur (UC-08) | ✅ |
-| 8c | Validation : dossier figé, PDF et DOCX dans le répertoire de la candidature (UC-09) | à venir |
+| 8c | Validation : dossier figé, PDF et DOCX dans le répertoire de la candidature (UC-09) | ✅ |
 | 8d | Phrases versées au profil (UC-04), import d'un CV (UC-02) | à venir |
 | 9 | Interface de bureau | à venir |
 
@@ -108,6 +108,17 @@ La production de documents :
   qui jugeait la version précédente, est signalé comme périmé, et `dossier evaluer` en demande un
   nouveau. Une régénération reporte vos phrases au mot près : le modèle n'en choisit que la place, et
   c'est le programme qui en écrit le texte.
+- **La validation.** `dossier valider N` fige le dossier, sans appel au modèle. Ses phrases sont
+  vérifiées une dernière fois contre le profil, puis le contenu de chaque fait cité y est copié : le
+  dossier ne renvoie plus au profil, et le modifier ensuite ne change rien à ce qui a été envoyé. Le
+  CV et la lettre sont écrits en PDF et en DOCX dans `candidatures\<n°> <entreprise> — <poste>\version
+  <v>\`, prêts à joindre à un courriel ; la candidature passe à `prête`, jamais `envoyée`, que vous
+  déclarez vous-même après l'envoi. Tout se fait d'un seul tenant : si le répertoire ne peut pas être
+  écrit, rien n'est enregistré. Une version validée ne se modifie plus — des triggers SQL le
+  refusent ; on en génère et en valide une nouvelle, l'ancienne reste conservée, et le journal dit
+  laquelle a été envoyée. `dossier voir N --version V` la relit telle quelle : l'offre, chaque phrase,
+  et le contenu des faits qui la justifiaient. Le DOCX reprend la mise en page du PDF, mais Word
+  recalcule ses lignes : c'est le PDF qui garantit la page unique.
 - **Le modèle de langage est branché** derrière une seule interface,
   `Modele`, et son adaptateur vers l'API Anthropic. Le modèle répond dans une forme imposée (sorties
   structurées), la partie stable des demandes — consignes et profil — est mise en cache, et un refus des classifieurs de
@@ -147,6 +158,7 @@ java -jar target/postulat.jar actions
 | `dossier generer N` · `dossier voir N [--apercus]` | rédiger, vérifier, évaluer et réviser le CV ciblé et la lettre ; les relire, phrase par phrase et origine comprise |
 | `dossier modifier N PHRASE TEXTE` · `dossier supprimer N PHRASE` · `dossier reintroduire N R1` | corriger à la main, sans modèle : réécrire une phrase, la retirer, remettre une puce retirée faute de place |
 | `dossier evaluer N` | un nouvel avis du recruteur sur le dossier corrigé, en un appel |
+| `dossier valider N` · `dossier voir N --version V` | figer le dossier, écrire ses PDF et DOCX, passer à `prête` ; relire une version validée, justifications comprises |
 | `modele essai [--gamme capable]` · `modele couts` | vérifier la clé d'API par un appel minuscule ; le cumul des coûts, mois par mois |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
@@ -199,7 +211,8 @@ postulat/
   stockage/     SQLite en JDBC nu, migrations, sauvegardes,        sqlite-jdbc
                 lecture du profil YAML                             snakeyaml-engine
   ia/           interface Modele, client Anthropic, journal        anthropic-java
-  rendu/        mise en page PDF sur une page, relecture du texte  pdfbox
+  rendu/        mise en page PDF sur une page, relecture du texte, pdfbox
+                DOCX écrit à la main
   cli/          ligne de commande                                  picocli
 ```
 
@@ -247,7 +260,7 @@ vraie base SQLite, dans un répertoire temporaire.
 Le profil, la base de suivi et les dossiers produits contiennent des données personnelles. Ils ne
 vivent **jamais** dans ce dépôt, mais dans le répertoire utilisateur du système :
 `%LOCALAPPDATA%\postulat` sous Windows, `$XDG_DATA_HOME/postulat` sous Linux. On y trouve
-`profil.yaml`, `postulat.db`, les dossiers `sauvegardes/` et `apercus/` et, s'il existe,
+`profil.yaml`, `postulat.db`, les dossiers `sauvegardes/`, `apercus/` et `candidatures/` et, s'il existe,
 `postulat.properties`. L'option
 `--donnees REPERTOIRE` en désigne un autre.
 

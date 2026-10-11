@@ -32,7 +32,8 @@ final class Migrations {
 
     /** Ordre d'application. Une migration ajoutée ici ne se modifie plus jamais : on en ajoute une suivante. */
     static final List<String> FICHIERS = List.of(
-            "V1__suivi.sql", "V2__journal_modele.sql", "V3__offre.sql", "V4__dossier.sql", "V5__correction.sql");
+            "V1__suivi.sql", "V2__journal_modele.sql", "V3__offre.sql", "V4__dossier.sql", "V5__correction.sql",
+            "V6__validation.sql");
 
     static final String REPERTOIRE = "/db/migration/";
 
