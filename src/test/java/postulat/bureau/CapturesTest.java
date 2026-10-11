@@ -240,6 +240,18 @@ class CapturesTest {
         assertThat(capturer("10-fiche-avec-dossier", () -> fenetre(f -> f.ouvrirFiche(7)), 1280, 1000)).exists();
     }
 
+    /** Ce que « postulat bureau --verifier » fait d'une installation : tout construire, sans rien montrer. */
+    @Test
+    void l_interface_se_verifie_sans_s_afficher() {
+        assumeTrue(affichage, "aucun affichage : vérification ignorée");
+
+        String compteRendu = Bureau.verifier(session);
+
+        assertThat(compteRendu).startsWith("Interface de bureau prête : JavaFX 21.").contains(", 3 pages construites, icône en 4 tailles")
+                .endsWith("nous sommes le dimanche 11 octobre 2026.");
+        assertThat(Bureau.icones()).extracting(i -> (int) i.getWidth()).containsExactly(16, 32, 48, 256);
+    }
+
     @Test
     void un_travail_long_montre_son_avancement_puis_son_bilan() throws Exception {
         assumeTrue(affichage, "aucun affichage : capture ignorée");

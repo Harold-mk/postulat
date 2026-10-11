@@ -1,7 +1,10 @@
 package postulat.cli;
 
 import java.io.BufferedReader;
+import java.io.FilterReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -10,6 +13,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.IVersionProvider;
 import picocli.CommandLine.MissingParameterException;
 import picocli.CommandLine.Model.ArgSpec;
 import picocli.CommandLine.Model.CommandSpec;
@@ -39,6 +43,7 @@ import postulat.suivi.RefusMetier;
         description = "Suivi d'une campagne de candidatures de stage. Rien n'est jamais envoyé : "
                 + "postulat prépare, mesure, rappelle et archive.",
         synopsisSubcommandLabel = "COMMANDE",
+        versionProvider = Postulat.Version.class,
         subcommands = {
             Consultations.Tableau.class,
             Consultations.Actions.class,
@@ -78,6 +83,19 @@ public final class Postulat implements Callable<Integer> {
             description = "Affiche l'aide de la commande.")
     boolean aide;
 
+    @Option(names = {"-V", "--version"}, versionHelp = true, description = "Affiche la version.")
+    boolean version;
+
+    /** La version inscrite au manifeste du jar ; lancé depuis les classes compilées, il n'y en a pas. */
+    static final class Version implements IVersionProvider {
+
+        @Override
+        public String[] getVersion() {
+            String v = Postulat.class.getPackage().getImplementationVersion();
+            return new String[] {"postulat " + (v == null ? "(version de développement)" : v)};
+        }
+    }
+
     @Option(names = "--donnees", paramLabel = "REPERTOIRE", scope = ScopeType.INHERIT,
             description = "Répertoire des données. Par défaut : %%LOCALAPPDATA%%\\postulat sous Windows, "
                     + "$XDG_DATA_HOME/postulat ailleurs.")
@@ -101,23 +119,52 @@ public final class Postulat implements Callable<Integer> {
     }
 
     public static void main(String[] arguments) {
-        BufferedReader clavier = sansMarqueDOrdre(new BufferedReader(new InputStreamReader(System.in)));
+        BufferedReader clavier = sansMarqueDOrdre(new InputStreamReader(System.in));
         System.exit(ligneDeCommande(Clock.systemDefaultZone(), clavier, MODELE_ANTHROPIC).execute(arguments));
     }
 
     /**
      * PowerShell fait précéder ce qu'il envoie à un programme d'une marque d'ordre des octets (U+FEFF),
-     * invisible : sans ce retrait, elle se collerait au nom d'une entreprise ou à un « oui ».
+     * invisible : sans ce retrait, elle se collerait au nom d'une entreprise ou à un « oui ». Elle est
+     * retirée à la première lecture, jamais d'avance : dans une console, lire d'avance attendrait que
+     * l'on appuie sur Entrée avant même d'exécuter la commande.
      */
-    static BufferedReader sansMarqueDOrdre(BufferedReader lecteur) {
-        try {
-            lecteur.mark(1);
-            if (lecteur.read() != Conversions.MARQUE_D_ORDRE) {
-                lecteur.reset();
+    static BufferedReader sansMarqueDOrdre(Reader lecteur) {
+        return new BufferedReader(new SansMarque(lecteur));
+    }
+
+    /** Un lecteur qui laisse passer tout, sauf une marque d'ordre des octets en tête. */
+    static final class SansMarque extends FilterReader {
+
+        private boolean auDebut = true;
+
+        SansMarque(Reader lecteur) {
+            super(lecteur);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int c = super.read();
+            if (auDebut) {
+                auDebut = false;
+                if (c == Conversions.MARQUE_D_ORDRE) {
+                    c = super.read();
+                }
             }
-            return lecteur;
-        } catch (java.io.IOException e) {
-            return lecteur;
+            return c;
+        }
+
+        @Override
+        public int read(char[] tampon, int debut, int longueur) throws IOException {
+            int n = super.read(tampon, debut, longueur);
+            if (auDebut && n > 0) {
+                auDebut = false;
+                if (tampon[debut] == Conversions.MARQUE_D_ORDRE) {
+                    System.arraycopy(tampon, debut + 1, tampon, debut, n - 1);
+                    return n == 1 ? read(tampon, debut, longueur) : n - 1;
+                }
+            }
+            return n;
         }
     }
 

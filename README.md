@@ -25,7 +25,7 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 8e | Import d'un CV existant pour amorcer le profil (UC-02) | ✅ |
 | 9a | Interface de bureau : tableau de bord, actions du jour, candidatures et leurs saisies | ✅ |
 | 9b | Interface de bureau : offres et dossiers — analyse, génération, correction phrase à phrase, validation | ✅ |
-| 9c | Empaquetage Windows par `jpackage` | à venir |
+| 9c | Application Windows portable, avec son propre Java, par `jlink` et `jpackage` | ✅ |
 
 ## Ce qui fonctionne aujourd'hui
 
@@ -167,9 +167,43 @@ La production de documents :
   jugement. Les tests n'appellent jamais l'API : un faux serveur local et un faux modèle en tiennent
   lieu.
 
+## Installer sous Windows
+
+L'application se livre en dossier portable qui porte son propre Java : rien à installer, ni Java
+ni droits d'administrateur.
+
+1. Construire le paquet, avec un JDK 21 ou plus récent, qui fournit `jlink` et `jpackage` :
+
+   ```powershell
+   .\mvnw.cmd -Ppaquet package
+   ```
+
+   Il écrit `target\Postulat-VERSION-windows.zip`, après avoir vérifié l'application construite :
+   la ligne de commande répond sans attendre l'entrée, l'interface s'ouvre hors écran, les dates
+   s'écrivent en français, et rien ne s'affiche sur la sortie d'erreur.
+2. Décompresser le zip où l'on veut, par exemple dans `%LOCALAPPDATA%\Programs` : on obtient un
+   dossier `Postulat\`.
+3. Deux lanceurs y attendent :
+   - `Postulat.exe` ouvre la fenêtre, sans console. Pour le retrouver : clic droit, *Épingler à
+     l'écran de démarrage*, ou *Envoyer vers › Bureau (créer un raccourci)*.
+   - `postulat-cli.exe` est la ligne de commande : `postulat-cli actions`,
+     `postulat-cli dossier generer 3`. Pour l'appeler de partout, ajouter le dossier `Postulat\` à
+     la variable `Path` de l'utilisateur.
+
+`postulat-cli bureau --verifier` contrôle une installation sans rien afficher, et
+`postulat-cli --version` donne la version. Les données restent dans `%LOCALAPPDATA%\postulat`,
+hors du dossier de l'application : remplacer celle-ci par une version plus récente, ou la supprimer,
+n'y touche pas. Lancée depuis le menu Démarrer, la fenêtre lit la clé d'API dans les variables
+d'environnement de l'utilisateur, comme la ligne de commande.
+
+Le dossier pèse environ 130 Mo : un Java réduit aux modules dont postulat se sert, JavaFX en
+modules nommés avec ses bibliothèques natives, et les dépendances, dont le SDK d'Anthropic. Le
+programme qui le construit est `src/paquet/Empaqueter.java` ; l'icône est dessinée par
+`src/paquet/Icone.java`.
+
 ## Utilisation
 
-Construire une fois le jar autonome, puis l'utiliser :
+Pendant le développement, construire le jar autonome, puis l'utiliser :
 
 ```bash
 ./mvnw package -DskipTests                 # produit target/postulat.jar
@@ -199,7 +233,7 @@ java -jar target/postulat.jar actions
 | `dossier valider N` · `dossier voir N --version V` | figer le dossier, écrire ses PDF et DOCX, passer à `prête` ; relire une version validée, justifications comprises |
 | `dossier verser N PHRASE --objectif TEXTE [--dans ID] [--resultat TEXTE]` · `--competence` · `--enrichir ID` | faire d'une phrase de votre main un fait du profil |
 | `modele essai [--gamme capable]` · `modele couts` | vérifier la clé d'API par un appel minuscule ; le cumul des coûts, mois par mois |
-| `bureau` | ouvrir l'interface de bureau |
+| `bureau [--verifier]` | ouvrir l'interface de bureau ; ou vérifier, sans rien afficher, qu'elle peut s'ouvrir ici |
 
 Toute saisie se date avec `--le` : `2026-10-01`, `01/10/2026`, `hier`. Sans `--le`, c'est
 aujourd'hui. Les étapes s'écrivent avec ou sans accents : `offre reçue`, `offre_recue`.

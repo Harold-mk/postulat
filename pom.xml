@@ -173,6 +173,8 @@
                                     <mainClass>postulat.cli.Postulat</mainClass>
                                     <manifestEntries>
                                         <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                                        <Implementation-Title>postulat</Implementation-Title>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
                                         <Multi-Release>true</Multi-Release>
                                     </manifestEntries>
                                 </transformer>
@@ -228,4 +230,41 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Itération 9c : l'application Windows portable, avec son propre Java. mvnw -Ppaquet package
+             écrit target/Postulat-VERSION-windows.zip ; voir src/paquet/Empaqueter.java. -->
+        <profile>
+            <id>paquet</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.6.3</version>
+                        <executions>
+                            <execution>
+                                <id>empaqueter</id>
+                                <phase>package</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <!-- le Java qui fait tourner Maven : son jlink et son jpackage servent -->
+                                    <executable>${java.home}/bin/java</executable>
+                                    <arguments>
+                                        <!-- Maven lit ce que le programme écrit en UTF-8 : qu'il l'écrive ainsi -->
+                                        <argument>-Dstdout.encoding=UTF-8</argument>
+                                        <argument>-Dstderr.encoding=UTF-8</argument>
+                                        <argument>src/paquet/Empaqueter.java</argument>
+                                        <argument>${project.build.directory}</argument>
+                                        <argument>${project.version}</argument>
+                                        <classpath/>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

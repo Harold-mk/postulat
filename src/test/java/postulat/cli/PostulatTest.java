@@ -401,6 +401,12 @@ class PostulatTest {
         }
 
         @Test
+        void la_version_est_celle_du_manifeste_et_sinon_dite_de_developpement() {
+            assertThat(reussi("--version").sortie().strip()).isEqualTo("postulat (version de développement)");
+            assertThat(reussi("-V").sortie()).startsWith("postulat ");
+        }
+
+        @Test
         void chaque_commande_a_son_aide() {
             assertThat(reussi("planifier", "--aide").sortie()).contains("Paramètres :").contains("--type=TYPE");
         }
@@ -467,14 +473,37 @@ class PostulatTest {
             assertThatThrownBy(() -> Conversions.date("1er octobre", AUJOURDHUI)).isInstanceOf(TypeConversionException.class);
         }
 
+        /** Dans une console, lire d'avance attendrait la touche Entrée avant même d'exécuter la commande. */
+        @Test
+        void rien_n_est_lu_de_l_entree_tant_qu_aucune_commande_ne_la_demande() {
+            java.io.Reader muet = new java.io.Reader() {
+                @Override
+                public int read(char[] tampon, int debut, int longueur) {
+                    throw new AssertionError("l'entrée a été lue d'avance");
+                }
+
+                @Override
+                public void close() {
+                }
+            };
+
+            BufferedReader entree = Postulat.sansMarqueDOrdre(muet);
+
+            assertThat(entree).isNotNull();
+        }
+
         @Test
         void la_marque_d_ordre_ajoutee_par_powershell_est_retiree() throws IOException {
-            BufferedReader avecMarque = Postulat.sansMarqueDOrdre(new BufferedReader(new StringReader("﻿Acme\noui")));
-            BufferedReader sansMarque = Postulat.sansMarqueDOrdre(new BufferedReader(new StringReader("Acme")));
+            BufferedReader avecMarque = Postulat.sansMarqueDOrdre(new StringReader("﻿Acme\noui"));
+            BufferedReader sansMarque = Postulat.sansMarqueDOrdre(new StringReader("Acme"));
+            BufferedReader marqueSeule = Postulat.sansMarqueDOrdre(new StringReader("﻿"));
+            java.io.Reader caractere = new Postulat.SansMarque(new StringReader("﻿oui"));
 
             assertThat(avecMarque.readLine()).isEqualTo("Acme");
             assertThat(avecMarque.readLine()).isEqualTo("oui");
             assertThat(sansMarque.readLine()).isEqualTo("Acme");
+            assertThat(marqueSeule.readLine()).isNull();
+            assertThat((char) caractere.read()).isEqualTo('o');
             assertThat(Conversions.sansMarqueDOrdre("﻿texte")).isEqualTo("texte");
             assertThat(Conversions.sansMarqueDOrdre("")).isEmpty();
         }
