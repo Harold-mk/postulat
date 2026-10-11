@@ -27,7 +27,10 @@ import org.snakeyaml.engine.v2.nodes.NodeTuple;
 import org.snakeyaml.engine.v2.nodes.ScalarNode;
 import org.snakeyaml.engine.v2.nodes.SequenceNode;
 import postulat.production.Competence;
+import postulat.production.Experience;
 import postulat.production.Fait;
+import postulat.production.Formation;
+import postulat.production.Identite;
 import postulat.production.Profil;
 import postulat.production.Realisation;
 
@@ -91,6 +94,98 @@ public final class EcritureProfil {
         };
         return ecrire(p -> p.avecFaitRemplace(nouveau), t -> t.remplacer(nouveau.id(), tous),
                 "à la place du fait « " + nouveau.id() + " » :", tous.stream().filter(c -> !c.vide()).toList());
+    }
+
+    /**
+     * Écrit un profil neuf, tiré d'un CV (UC-02), sous {@code cible} — qui ne doit pas exister : un profil
+     * ne s'écrase jamais (A2). Le fichier s'ouvre sur un avertissement : il est à relire ligne à ligne.
+     *
+     * @param origine ce qui a produit ce profil, pour l'en-tête : « importé de « cv.pdf » le 11/10/2026 »
+     */
+    public static void nouveau(Path cible, Profil profil, String origine) {
+        String n = System.lineSeparator();
+        StringBuilder y = new StringBuilder();
+        y.append("# Profil ").append(origine).append('.').append(n)
+                .append('#').append(n)
+                .append("# RELISEZ CHAQUE LIGNE : ce fichier devient la seule source de faits de vos candidatures.").append(n)
+                .append("# Le modèle n'a fait que ranger ce que dit le CV, et a pu se tromper de case. Ce qu'il n'y a pas").append(n)
+                .append("# trouvé est marqué « à compléter » : écrivez-le, ou retirez l'élément.").append(n)
+                .append("# Vérifiez ensuite avec :  postulat profil verifier").append(n).append(n);
+        Identite i = profil.identite();
+        y.append("identite:").append(n);
+        ligne(y, "  ", "nom", i.nom(), true);
+        ligne(y, "  ", "titre", i.titre(), true);
+        ligne(y, "  ", "contact", i.contact(), true);
+        ligne(y, "  ", "lieu", i.lieu(), false);
+        y.append(n).append("experiences:").append(profil.experiences().isEmpty() ? " []" : "").append(n);
+        for (Experience e : profil.experiences()) {
+            y.append("  - id: ").append(e.id()).append(n);
+            ligne(y, "    ", "poste", e.poste(), true);
+            ligne(y, "    ", "organisation", e.organisation(), true);
+            ligne(y, "    ", "periode", e.periode(), true);
+            ligne(y, "    ", "duree", e.duree(), false);
+            ligne(y, "    ", "lieu", e.lieu(), false);
+            realisations(y, e.realisations());
+        }
+        y.append(n).append("formations:").append(profil.formations().isEmpty() ? " []" : "").append(n);
+        for (Formation f : profil.formations()) {
+            y.append("  - id: ").append(f.id()).append(n);
+            ligne(y, "    ", "diplome", f.diplome(), true);
+            ligne(y, "    ", "etablissement", f.etablissement(), true);
+            ligne(y, "    ", "periode", f.periode(), true);
+            ligne(y, "    ", "details", f.details(), false);
+            realisations(y, f.realisations());
+        }
+        y.append(n).append("competences:").append(profil.competences().isEmpty() ? " []" : "").append(n);
+        for (Competence c : profil.competences()) {
+            y.append("  - id: ").append(c.id()).append(n);
+            ligne(y, "    ", "nom", c.nom(), true);
+            ligne(y, "    ", "niveau", c.niveau(), false);
+        }
+
+        Path provisoire = cible.resolveSibling(cible.getFileName() + ".provisoire");
+        try {
+            Files.createDirectories(cible.toAbsolutePath().getParent());
+            Files.writeString(provisoire, y, StandardCharsets.UTF_8);
+            // sans REPLACE_EXISTING : si un profil est apparu entre-temps, le renommage échoue au lieu de l'écraser
+            Files.move(provisoire, cible);
+        } catch (IOException e) {
+            try {
+                Files.deleteIfExists(provisoire);
+            } catch (IOException ignoree) {
+                // l'erreur d'origine dit déjà l'essentiel
+            }
+            throw new ErreurStockage("Le profil importé n'a pas pu être écrit sous " + cible + " : " + e + ". Aucun fichier n'a été laissé.", e);
+        }
+        Optional<Profil> relu = LecteurProfil.lire(cible).profil();
+        if (relu.isEmpty() || !relu.get().equals(profil)) {
+            throw new ErreurStockage("Le profil écrit sous " + cible + " ne se relit pas comme prévu : vérifiez-le avec postulat profil "
+                    + "verifier avant de vous en servir.");
+        }
+    }
+
+    private static void ligne(StringBuilder y, String retrait, String cle, String valeur, boolean obligatoire) {
+        if (obligatoire || !valeur.isBlank()) {
+            y.append(retrait).append(cle).append(": ").append(guillemets(valeur)).append(System.lineSeparator());
+        }
+    }
+
+    private static void realisations(StringBuilder y, List<Realisation> realisations) {
+        String n = System.lineSeparator();
+        if (realisations.isEmpty()) {
+            return;
+        }
+        y.append("    realisations:").append(n);
+        for (Realisation r : realisations) {
+            y.append("      - id: ").append(r.id()).append(n);
+            ligne(y, "        ", "objectif", r.objectif(), true);
+            ligne(y, "        ", "tache", r.tache(), true);
+            ligne(y, "        ", "resultat", r.resultat(), false);
+            if (!r.competences().isEmpty()) {
+                y.append("        competences: ").append(r.competences().stream().map(EcritureProfil::guillemets)
+                        .collect(Collectors.joining(", ", "[", "]"))).append(n);
+            }
+        }
     }
 
     // --- l'écriture, vérifiée ---

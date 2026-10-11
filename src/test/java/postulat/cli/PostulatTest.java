@@ -570,6 +570,97 @@ class PostulatTest {
         void sans_sous_commande_l_aide_du_profil_s_affiche() {
             assertThat(reussi("profil").sortie()).contains("initialiser").contains("verifier");
         }
+
+        // --- UC-02 : importer un CV existant ---
+
+        static final String CV_TEXTE = """
+                Camille Martin
+                camille@exemple.test · Lyon
+                Stagiaire data analyst — Acme · 2025-01 à 2025-06
+                • Tableau de bord Power BI de 5 KPI pour 12 commerciaux
+                Master data — Université Lumière · 2024 à 2026
+                Compétences : SQL, Python
+                """;
+
+        static postulat.ia.ImportCv.ProfilLu lu() {
+            return new postulat.ia.ImportCv.ProfilLu(new postulat.ia.ImportCv.IdentiteLue("Camille Martin", "", "camille@exemple.test", "Lyon"),
+                    List.of(new postulat.ia.ImportCv.ExperienceLue("Stagiaire data analyst", "Acme", "2025-01 à 2025-06", "", "", List.of(
+                            new postulat.ia.ImportCv.RealisationLue("", "Tableau de bord Power BI", "5 KPI pour 12 commerciaux",
+                                    List.of("Power BI"))))),
+                    List.of(new postulat.ia.ImportCv.FormationLue("Master data", "Université Lumière", "2024 à 2026", "", List.of())),
+                    List.of(new postulat.ia.ImportCv.CompetenceLue("SQL", ""), new postulat.ia.ImportCv.CompetenceLue("Python", "")));
+        }
+
+        Path cv() throws IOException {
+            return Files.writeString(dossier.resolve("mon-cv.txt"), CV_TEXTE);
+        }
+
+        @Test
+        void un_cv_pre_remplit_le_profil_et_l_auteur_est_enjoint_de_tout_relire() throws IOException {
+            faux.repondre(lu());
+
+            Resultat r = reussi("profil", "importer", cv().toString());
+
+            assertThat(r.sortie()).contains("Profil importé de « mon-cv.txt » : " + dossier.resolve("profil.yaml"))
+                    .contains("5 faits : 1 expérience, 1 réalisation, 1 formation, 2 compétences.")
+                    .contains("2 champ(s) à écrire vous-même, marqués « à compléter » : postulat profil verifier les liste à la ligne près.")
+                    .contains("RELISEZ CHAQUE LIGNE").contains("Coût de l'import : 1 appel, 0,0015 $.")
+                    .doesNotContain("existait déjà").doesNotContain("Remplacés");
+            assertThat(Files.readString(dossier.resolve("profil.yaml"))).startsWith("# Profil importé de « mon-cv.txt » le 10/10/2026.");
+            assertThat(faux.demandes()).extracting(postulat.ia.Demande::tache).containsExactly("import-cv");
+            Resultat verifier = postulat("profil", "verifier");
+            assertThat(verifier.sortie()).contains("identite.titre : à compléter")
+                    .contains("experiences[0].realisations[0].objectif : à compléter");
+            assertThat(reussi("modele", "couts").sortie()).contains("1 appel");
+        }
+
+        /** UC-02 A2 : un profil existant n'est jamais écrasé ; l'import s'écrit à côté. */
+        @Test
+        void un_profil_existant_n_est_jamais_ecrase() throws IOException {
+            Files.writeString(dossier.resolve("profil.yaml"), VALIDE);
+            faux.repondre(lu());
+
+            Resultat r = reussi("profil", "importer", cv().toString());
+
+            assertThat(Files.readString(dossier.resolve("profil.yaml"))).isEqualTo(VALIDE);
+            assertThat(dossier.resolve("profil-2.yaml")).exists();
+            assertThat(r.sortie()).contains("Profil importé de « mon-cv.txt » : " + dossier.resolve("profil-2.yaml"))
+                    .contains("Un profil existait déjà : il n'a pas été touché (UC-02 A2).")
+                    .contains("postulat profil verifier --fichier \"" + dossier.resolve("profil-2.yaml") + "\"");
+        }
+
+        @Test
+        void ce_que_le_cv_ne_dit_pas_est_signale() throws IOException {
+            faux.repondre(new postulat.ia.ImportCv.ProfilLu(new postulat.ia.ImportCv.IdentiteLue("Camille Martin", "", "camille@exemple.test",
+                    ""), List.of(), List.of(), List.of(new postulat.ia.ImportCv.CompetenceLue("Kubernetes", ""))));
+
+            assertThat(reussi("profil", "importer", cv().toString()).sortie())
+                    .contains("Remplacés par « à compléter », faute de les lire dans le CV :" + LeDossier.FIN
+                            + "  - compétence : « Kubernetes » ne se lit pas dans le CV.");
+        }
+
+        /** UC-02 A1, E1, E2 : un scan, un fichier vide, un modèle indisponible : rien n'est écrit. */
+        @Test
+        void sans_texte_ou_sans_modele_aucun_profil_n_est_ecrit() throws IOException {
+            java.io.ByteArrayOutputStream pdf = new java.io.ByteArrayOutputStream();
+            try (org.apache.pdfbox.pdmodel.PDDocument d = new org.apache.pdfbox.pdmodel.PDDocument()) {
+                d.addPage(new org.apache.pdfbox.pdmodel.PDPage());
+                d.save(pdf);
+            }
+            Path scan = Files.write(dossier.resolve("scan.pdf"), pdf.toByteArray());
+
+            Resultat r = postulat("profil", "importer", scan.toString());
+
+            assertThat(r.code()).isEqualTo(Postulat.REFUSE);
+            assertThat(r.erreurs()).contains("c'est sans doute un scan");
+            assertThat(postulat("profil", "importer", dossier.resolve("absent.pdf").toString()).erreurs()).contains("Fichier introuvable");
+            faux.echouer(new ErreurModele(ErreurModele.Nature.INDISPONIBLE, "API injoignable.", null, null));
+            Resultat indisponible = postulat("profil", "importer", cv().toString());
+            assertThat(indisponible.code()).isEqualTo(Postulat.ERREUR);
+            assertThat(indisponible.erreurs()).contains("API injoignable.");
+            assertThat(dossier.resolve("profil.yaml")).doesNotExist();
+            assertThat(faux.demandes()).hasSize(1);
+        }
     }
 
     @Nested

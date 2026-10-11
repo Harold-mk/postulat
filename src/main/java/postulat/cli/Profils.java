@@ -9,21 +9,30 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.Parameters;
+import postulat.ia.ImportCv;
 import postulat.production.Competence;
 import postulat.production.Experience;
 import postulat.production.Fait;
 import postulat.production.Formation;
 import postulat.production.Profil;
 import postulat.production.Realisation;
+import postulat.rendu.ErreurRendu;
+import postulat.rendu.LectureCv;
+import postulat.stockage.Base;
+import postulat.stockage.EcritureProfil;
 import postulat.stockage.LectureProfil;
 
-/** Le profil, seule source de faits : le créer à partir d'un gabarit, puis le vérifier (UC-01, UC-03). */
+/**
+ * Le profil, seule source de faits : le créer à partir d'un gabarit ou d'un CV existant, puis le vérifier
+ * (UC-01 à UC-03).
+ */
 final class Profils {
 
     private Profils() {}
 
-    @Command(name = "profil", description = "Le profil, seule source de faits de vos candidatures (UC-01, UC-03).",
-            subcommands = {Initialiser.class, Verifier.class})
+    @Command(name = "profil", description = "Le profil, seule source de faits de vos candidatures (UC-01 à UC-03).",
+            subcommands = {Initialiser.class, Importer.class, Verifier.class})
     static final class CommandeProfil extends Commande {
 
         @Override
@@ -75,6 +84,61 @@ final class Profils {
                 derive = existant.resolveSibling(base + "-" + i + extension);
             }
             return derive;
+        }
+    }
+
+    @Command(name = "importer", description = "Pré-remplit un profil à partir d'un CV existant, en PDF, DOCX ou texte (UC-02) : "
+            + "le modèle range ce que dit le CV, sans rien deviner, et ce qu'il n'y trouve pas est marqué « à compléter ». N'écrase "
+            + "jamais un profil existant. Un appel au modèle économique, à qui le texte du CV est envoyé.")
+    static final class Importer extends SurProfil {
+
+        @Parameters(index = "0", paramLabel = "CV", description = "Le CV : un fichier .pdf, .docx ou .txt.")
+        Path cv;
+
+        @Override
+        public Integer call() {
+            Path source = cv.toAbsolutePath();
+            if (!Files.exists(source)) {
+                throw new Refus("Fichier introuvable : " + source);
+            }
+            String texte;
+            try {
+                texte = LectureCv.texte(source);
+            } catch (ErreurRendu e) {
+                throw new Refus(e.getMessage());
+            }
+            Path cible = fichier();
+            boolean existait = Files.exists(cible);
+            if (existait) {
+                cible = Initialiser.nomDerive(cible);
+            }
+            ImportCv.Import i;
+            try (Base base = ouvrirBase()) {
+                i = ImportCv.importer(modele(base, racine().donnees().reglages()), texte);
+            }
+            EcritureProfil.nouveau(cible, i.profil(), "importé de « " + source.getFileName() + " » le " + Affichage.date(aujourdhui()));
+
+            PrintWriter out = sortie();
+            out.println("Profil importé de « " + source.getFileName() + " » : " + cible);
+            if (existait) {
+                out.println("Un profil existait déjà : il n'a pas été touché (UC-02 A2). Celui-ci est écrit à côté ; fusionnez-les à la "
+                        + "main, ou, après relecture, donnez-lui le nom de l'ancien.");
+            }
+            out.println(Verifier.decompte(i.profil()) + ".");
+            int aCompleter = racine().donnees().lireProfil(cible).problemes().size();
+            if (aCompleter > 0) {
+                out.println(aCompleter + " champ(s) à écrire vous-même, marqués « à compléter » : postulat profil verifier"
+                        + (cible.equals(racine().donnees().fichierProfil()) ? "" : " --fichier \"" + cible + "\"")
+                        + " les liste à la ligne près.");
+            }
+            if (!i.remplacements().isEmpty()) {
+                out.println("Remplacés par « à compléter », faute de les lire dans le CV :");
+                i.remplacements().forEach(x -> out.println("  - " + x));
+            }
+            out.println("RELISEZ CHAQUE LIGNE : ce fichier devient la seule source de faits de vos candidatures, et le modèle a pu se "
+                    + "tromper de case.");
+            out.println("Coût de l'import : 1 appel, " + Affichage.dollars(i.consommation().coutMicroDollars()) + ".");
+            return 0;
         }
     }
 

@@ -158,16 +158,22 @@ public record Profil(
 
     /** Un identifiant libre pour une nouvelle compétence : « comp-power-bi », ou « comp-power-bi-2 » s'il est pris. */
     public String identifiantDeCompetence(String nom) {
-        String base = "comp-" + Normalizer.normalize(nom, Normalizer.Form.NFD).replaceAll("\\p{M}", "")
-                .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
-        if (base.equals("comp-")) {
-            base = "comp";
-        }
+        String base = slug(nom).isEmpty() ? "comp" : "comp-" + slug(nom);
         String id = base;
         for (int n = 2; fait(id).isPresent(); n++) {
             id = base + "-" + n;
         }
         return id;
+    }
+
+    /**
+     * Un texte réduit à ce qu'un identifiant accepte : « Société Générale » donne « societe-generale ».
+     * Coupé à 30 caractères, pour rester lisible ; vide s'il ne reste rien.
+     */
+    public static String slug(String texte) {
+        String s = Normalizer.normalize(texte, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+        return s.length() <= 30 ? s : s.substring(0, 30).replaceAll("-+$", "");
     }
 
     /** Les réalisations de l'expérience ou de la formation {@code parent}. */

@@ -22,7 +22,7 @@ vraie et démontrable, puis suivre chaque candidature jusqu'à son issue.
 | 8b | Correction manuelle du dossier, régénération qui garde les phrases de l'auteur (UC-08) | ✅ |
 | 8c | Validation : dossier figé, PDF et DOCX dans le répertoire de la candidature (UC-09) | ✅ |
 | 8d | Phrases versées au profil (UC-04) | ✅ |
-| 8e | Import d'un CV existant pour amorcer le profil (UC-02) | à venir |
+| 8e | Import d'un CV existant pour amorcer le profil (UC-02) | ✅ |
 | 9 | Interface de bureau | à venir |
 
 ## Ce qui fonctionne aujourd'hui
@@ -60,6 +60,15 @@ La production de documents :
   unique, qu'un dossier cite. La vérification liste d'un coup tout ce qui manque, à la ligne et à la
   colonne près : champ obligatoire vide, « à compléter » oublié, identifiant en double, champ mal
   orthographié, erreur de syntaxe.
+- **L'import d'un CV existant.** `profil importer CV` lit un CV en PDF, en DOCX ou en texte, et le
+  modèle économique en range le contenu en profil — sans rien deviner : ce qu'il n'y trouve pas est
+  marqué « à compléter », jamais inventé. Le code le vérifie : un nombre absent du CV, ou un nom
+  d'organisation, d'établissement ou de compétence qu'on n'y lit pas, est remplacé par « à
+  compléter » et signalé. Les identifiants viennent du code. Un scan sans texte est désigné comme
+  tel ; un profil existant n'est jamais écrasé, l'import s'écrit à côté ; si le modèle échoue, rien
+  n'est écrit. Le fichier obtenu commence par une injonction : le relire ligne à ligne, car il
+  devient la seule source de faits. Le texte du CV est envoyé au modèle, comme le profil l'est à
+  chaque génération.
 - **La vérification de traçabilité**, qui décide si un document produit est recevable. Toute
   phrase d'origine « faits » doit citer des faits qui existent (RG-01), ne contenir que des nombres
   présents dans ces faits (RG-03) — « 15 commerciaux » est refusé si le fait dit 12, « une
@@ -164,7 +173,7 @@ java -jar target/postulat.jar actions
 | `retour-promis N JOUR` | une réponse promise pour une date |
 | `interaction N courriel\|appel [--notes TEXTE]` · `contact N NOM` · `noter N TEXTE` | la mémoire des échanges |
 | `sauvegarder` · `restaurer ARCHIVE` | archive datée ; retour à une archive après vérification |
-| `profil initialiser` · `profil verifier` | écrire le gabarit commenté du profil ; dire ce qui y manque, à la ligne près |
+| `profil initialiser` · `profil importer CV` · `profil verifier` | écrire le gabarit commenté du profil, ou le pré-remplir d'après un CV existant ; dire ce qui y manque, à la ligne près |
 | `cv apercu [--offre N] [--sortie FICHIER]` | rendre sur une page le CV tiré du profil, le relire, et le noter face à une offre |
 | `dossier generer N` · `dossier voir N [--apercus]` | rédiger, vérifier, évaluer et réviser le CV ciblé et la lettre ; les relire, phrase par phrase et origine comprise |
 | `dossier modifier N PHRASE TEXTE` · `dossier supprimer N PHRASE` · `dossier reintroduire N R1` | corriger à la main, sans modèle : réécrire une phrase, la retirer, remettre une puce retirée faute de place |

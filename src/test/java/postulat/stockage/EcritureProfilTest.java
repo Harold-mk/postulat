@@ -267,4 +267,45 @@ class EcritureProfilTest {
             assertThat(EcritureProfil.guillemets("a \"b\" \\ c\nd\te\u0001")).isEqualTo("\"a \\\"b\\\" \\\\ c\\nd\\te\"");
         }
     }
+
+    /** UC-02 : un profil neuf, tiré d'un CV, qui se relit à l'identique et n'écrase jamais rien. */
+    @Nested
+    class UnProfilImporte {
+
+        static final Profil IMPORTE = new Profil(
+                new postulat.production.Identite("Camille Martin", Profil.A_COMPLETER, "camille@exemple.test", ""),
+                List.of(new postulat.production.Experience("exp-acme", "Stagiaire « data »", "Acme", "2025", "", "Lyon", "", List.of(
+                        new Realisation("exp-acme-r1", Profil.A_COMPLETER, "Tableau de bord : Power BI # 5 KPI", "", List.of("Power BI"), "")))),
+                List.of(new postulat.production.Formation("form-master", "Master data", "Université Lumière", "2024 à 2026", "", "",
+                        List.of())),
+                List.of(new Competence("comp-sql", "SQL", "avancé", "")));
+
+        @Test
+        void il_s_ouvre_sur_un_avertissement_et_se_relit_a_l_identique() throws IOException {
+            Path cible = dossier.resolve("profil.yaml");
+
+            EcritureProfil.nouveau(cible, IMPORTE, "importé de « cv.pdf » le 11/10/2026");
+
+            assertThat(texte()).startsWith("# Profil importé de « cv.pdf » le 11/10/2026." + System.lineSeparator())
+                    .contains("# RELISEZ CHAQUE LIGNE").contains("  titre: \"à compléter\"").doesNotContain("lieu: \"\"")
+                    .contains("        competences: [\"Power BI\"]");
+            assertThat(lu()).isEqualTo(IMPORTE);
+            assertThat(LecteurProfil.lire(cible).problemes()).extracting(LectureProfil.Probleme::chemin)
+                    .containsExactly("identite.titre", "experiences[0].realisations[0].objectif");
+        }
+
+        @Test
+        void sans_rien_a_ranger_les_rubriques_restent_vides_et_rien_n_est_ecrase() throws IOException {
+            Profil vide = new Profil(new postulat.production.Identite(Profil.A_COMPLETER, Profil.A_COMPLETER, Profil.A_COMPLETER, ""),
+                    List.of(), List.of(), List.of());
+            EcritureProfil.nouveau(dossier.resolve("profil.yaml"), vide, "importé");
+
+            assertThat(texte()).contains("experiences: []").contains("formations: []").contains("competences: []");
+            assertThat(lu()).isEqualTo(vide);
+            assertThatThrownBy(() -> EcritureProfil.nouveau(dossier.resolve("profil.yaml"), IMPORTE, "importé"))
+                    .isInstanceOf(ErreurStockage.class).hasMessageContaining("Aucun fichier n'a été laissé");
+            assertThat(lu()).isEqualTo(vide);
+            assertThat(dossier.resolve("profil.yaml.provisoire")).doesNotExist();
+        }
+    }
 }
